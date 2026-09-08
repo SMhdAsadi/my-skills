@@ -1,0 +1,10 @@
+# Standardize line endings to LF across all platforms
+* text=auto eol=lf
+
+# Explicitly identify Markdown and YAML files for linguist
+*.md text diff=markdown
+*.yml text
+*.yaml text
+
+# Preserve script executable permissions
+*.sh text eol=lf

@@ -1,0 +1,12 @@
+# Cursor Rules for Agent Skills
+
+## Repository Purpose
+This repository hosts reusable skills following the Agent Skills specification (`agentskills.io`).
+
+## Skills Structure
+- Every skill is located in `skills/<skill-name>/`.
+- The entrypoint for an agent is `skills/<skill-name>/SKILL.md`.
+- Read the YAML frontmatter of `SKILL.md` to determine suitability.
+
+## Active Skills
+- `review-walkthrough`: When the user asks for a code review, branch walkthrough, or interactive review of git changes, read `skills/review-walkthrough/SKILL.md` and follow its 3-phase interactive review procedure.

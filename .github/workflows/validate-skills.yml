@@ -1,0 +1,112 @@
+name: Validate Skills
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate-agent-skills:
+    name: Validate Agent Skills Specification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Run Skills Validator
+        run: |
+          python3 -c "
+          import os, sys, re, yaml
+          from pathlib import Path
+
+          skills_dir = Path('skills')
+          if not skills_dir.is_dir():
+              print('Error: skills/ directory not found')
+              sys.exit(1)
+
+          errors = []
+          skills = [d for d in skills_dir.iterdir() if d.is_dir()]
+
+          if not skills:
+              print('Warning: No skill directories found in skills/')
+              sys.exit(0)
+
+          print(f'Discovered {len(skills)} skill(s) to validate...\n')
+
+          for skill_path in sorted(skills):
+              skill_name = skill_path.name
+              skill_file = skill_path / 'SKILL.md'
+              print(f'Checking {skill_name}...')
+
+              if not skill_file.exists():
+                  errors.append(f'{skill_name}: Missing SKILL.md')
+                  continue
+
+              content = skill_file.read_text(encoding='utf-8')
+              if not content.startswith('---'):
+                  errors.append(f'{skill_name}: SKILL.md must begin with YAML frontmatter delimiter (---)')
+                  continue
+
+              parts = content.split('---', 2)
+              if len(parts) < 3:
+                  errors.append(f'{skill_name}: SKILL.md has unclosed or malformed frontmatter')
+                  continue
+
+              try:
+                  frontmatter = yaml.safe_load(parts[1])
+              except Exception as e:
+                  errors.append(f'{skill_name}: Failed to parse YAML frontmatter: {e}')
+                  continue
+
+              if not isinstance(frontmatter, dict):
+                  errors.append(f'{skill_name}: Frontmatter must be a key-value dictionary')
+                  continue
+
+              name = frontmatter.get('name')
+              if not name:
+                  errors.append(f'{skill_name}: Missing required \"name\" field')
+              elif not re.match(r'^[a-z0-9-]+$', name):
+                  errors.append(f'{skill_name}: Name \"{name}\" must contain only lowercase alphanumeric characters and hyphens')
+              elif len(name) > 64:
+                  errors.append(f'{skill_name}: Name \"{name}\" exceeds 64 characters ({len(name)})')
+              elif name != skill_name:
+                  errors.append(f'{skill_name}: Directory name \"{skill_name}\" does not match frontmatter name \"{name}\"')
+
+              desc = frontmatter.get('description')
+              if not desc:
+                  errors.append(f'{skill_name}: Missing required \"description\" field')
+              elif not isinstance(desc, str):
+                  errors.append(f'{skill_name}: Description must be a string')
+              elif len(desc) > 1024:
+                  errors.append(f'{skill_name}: Description exceeds 1024 characters ({len(desc)})')
+
+              body = parts[2].strip()
+              if not body:
+                  errors.append(f'{skill_name}: SKILL.md contains no instructions after frontmatter')
+
+              # Validate internal relative links
+              link_pattern = re.compile(r'\[.*?\]\((?!https?:\/\/|mailto:)(.*?)\)')
+              for match in link_pattern.finditer(body):
+                  link_target = match.group(1).split('#')[0].strip()
+                  if link_target:
+                      target_path = skill_path / link_target
+                      if not target_path.exists():
+                          errors.append(f'{skill_name}: Broken relative reference in SKILL.md -> {link_target}')
+
+          if errors:
+              print('\nValidation FAILED with errors:')
+              for err in errors:
+                  print(f'  - {err}')
+              sys.exit(1)
+          else:
+              print('\nAll skills passed Agent Skills specification checks!')
+          "

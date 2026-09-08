@@ -1,0 +1,43 @@
+name: Skill Request
+description: Propose a new agent skill for this repository
+title: "[Skill Proposal]: "
+labels: ["enhancement", "skill-proposal"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for proposing a new skill! Please describe the use case and triggers below.
+  - type: input
+    id: skill-name
+    attributes:
+      label: Skill Name
+      description: Proposed name in lowercase-kebab-case (e.g., git-rebase-interactive).
+      placeholder: my-new-skill
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Skill Purpose & Use Cases
+      description: What does this skill enable the AI agent to do?
+      placeholder: Describe the problem, workflow, and expected outcomes...
+    validations:
+      required: true
+  - type: textarea
+    id: triggers
+    attributes:
+      label: Trigger Phrases
+      description: What prompt phrases should cause an agent to invoke this skill?
+      placeholder: "e.g., 'resolve rebase conflicts', 'prepare changelog'"
+    validations:
+      required: true
+  - type: checkboxes
+    id: harnesses
+    attributes:
+      label: Target Harnesses
+      options:
+        - label: Vercel Skills CLI (`npx skills`)
+        - label: Anthropic Claude Code
+        - label: OpenCode
+        - label: Cursor / Windsurf
+        - label: OpenAI Codex / Universal

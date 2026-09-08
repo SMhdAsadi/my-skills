@@ -1,0 +1,48 @@
+name: Bug Report
+description: Report an issue with an existing skill or instruction set
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue!
+  - type: dropdown
+    id: skill
+    attributes:
+      label: Affected Skill
+      description: Which skill is having an issue?
+      options:
+        - review-walkthrough
+        - general / repository setup
+    validations:
+      required: true
+  - type: dropdown
+    id: harness
+    attributes:
+      label: Agent Harness
+      description: What harness or CLI were you using?
+      options:
+        - Vercel Skills CLI (`npx skills`)
+        - Anthropic Claude Code
+        - OpenCode
+        - Cursor / Windsurf
+        - OpenAI Codex / Copilot
+        - Antigravity / Gemini CLI
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      description: What did you expect the agent to do?
+    validations:
+      required: true
+  - type: textarea
+    id: actual-behavior
+    attributes:
+      label: Actual Behavior
+      description: What did the agent actually do instead?
+    validations:
+      required: true

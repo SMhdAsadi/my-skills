@@ -24,22 +24,22 @@ The fastest way to install skills into your local project or user environment:
 
 ```bash
 # Install all skills from this repository
-npx skills add SMhd/my-skills
+npx skills add SMhdAsadi/my-skills
 
 # Install only review-walkthrough
-npx skills add SMhd/my-skills@review-walkthrough
+npx skills add SMhdAsadi/my-skills@review-walkthrough
 
 # Install globally for your user across all projects
-npx skills add SMhd/my-skills --global
+npx skills add SMhdAsadi/my-skills --global
 
 # Target a specific agent harness (e.g. claude-code, cursor)
-npx skills add SMhd/my-skills --agent claude-code
+npx skills add SMhdAsadi/my-skills --agent claude-code
 ```
 
 > [!TIP]
 > You can preview the skills in this repository before installing:
 > ```bash
-> npx skills add SMhd/my-skills --list
+> npx skills add SMhdAsadi/my-skills --list
 > ```
 
 ---
@@ -49,7 +49,7 @@ npx skills add SMhd/my-skills --agent claude-code
 #### OpenCode
 OpenCode recognizes skills defined in `skills/` or `.opencode/skills/`. To use in an existing project:
 ```bash
-git clone https://github.com/SMhd/my-skills.git /tmp/my-skills
+git clone https://github.com/SMhdAsadi/my-skills.git /tmp/my-skills
 mkdir -p .opencode/skills
 cp -r /tmp/my-skills/skills/* .opencode/skills/
 ```
@@ -58,7 +58,7 @@ cp -r /tmp/my-skills/skills/* .opencode/skills/
 Claude Code discovers skills placed in `~/.claude/skills/` (global) or `.claude/skills/` (project-level):
 ```bash
 mkdir -p ~/.claude/skills
-git clone https://github.com/SMhd/my-skills.git ~/.claude/skills/my-skills
+git clone https://github.com/SMhdAsadi/my-skills.git ~/.claude/skills/my-skills
 ```
 
 #### Cursor

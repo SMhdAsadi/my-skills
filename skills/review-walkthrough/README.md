@@ -70,10 +70,10 @@ flowchart TD
 ### Via Vercel Skills CLI
 ```bash
 # Install directly from GitHub
-npx skills add SMhd/my-skills@review-walkthrough
+npx skills add SMhdAsadi/my-skills@review-walkthrough
 
 # Or install globally
-npx skills add SMhd/my-skills@review-walkthrough --global
+npx skills add SMhdAsadi/my-skills@review-walkthrough --global
 ```
 
 ### Manual Installation

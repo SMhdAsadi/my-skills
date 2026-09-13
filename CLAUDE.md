@@ -8,7 +8,7 @@ A multi-harness skills repository providing plug-and-play skills compatible with
 
 ## Skill Inventory
 
-- [`skills/review-walkthrough`](skills/review-walkthrough/SKILL.md): Guided, interactive code review companion that decomposes diffs into dependency-ordered slices with line-anchored spot-check questions.
+- [`skills/review-walkthrough`](skills/review-walkthrough/SKILL.md): Architectural reading plan generator and on-demand review co-pilot — analyzes a branch diff once, writes a dependency-ordered reading plan artifact with line-anchored risk hypotheses, then stays on standby for emergent Q&A while the reviewer reads code in their IDE.
 
 ## Working with Skills
 

@@ -9,4 +9,4 @@ This repository hosts reusable skills following the Agent Skills specification (
 - Read the YAML frontmatter of `SKILL.md` to determine suitability.
 
 ## Active Skills
-- `review-walkthrough`: When the user asks for a code review, branch walkthrough, or interactive review of git changes, read `skills/review-walkthrough/SKILL.md` and follow its 3-phase interactive review procedure.
+- `review-walkthrough`: When the user asks for a code review, branch walkthrough, or a reading plan for git changes, read `skills/review-walkthrough/SKILL.md` and follow its plan-generation + standby co-pilot procedure.

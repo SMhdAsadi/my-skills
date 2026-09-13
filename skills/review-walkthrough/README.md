@@ -3,7 +3,7 @@
 [![Agent Skills Standard](https://img.shields.io/badge/Agent%20Skills-Standard-0A84FF?style=flat-square)](https://agentskills.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](../../LICENSE)
 
-An interactive, step-by-step code review companion for AI agents designed to maximize the depth, clarity, and speed of **human** code reviews.
+An **Architectural Reading Plan Generator and On-Demand Review Co-Pilot** for AI agents, designed to maximize the depth, clarity, and speed of **human** code reviews.
 
 ---
 
@@ -15,24 +15,25 @@ Most AI code review tools dump static lints, nitpicks, or a wall of pass/fail ba
 2. **Reviewer Blindness**: Glossing over critical schema or invariant changes buried in the middle of cosmetic updates.
 3. **Loss of Context**: Missing the mental model that connects data structures to the downstream UI components.
 
+Interactive chat walkthroughs address part of this but introduce problems of their own: turn-by-turn gating that fights asynchronous review habits, and trimmed code hunks trapped in a chat window — a far worse reading surface than the reviewer's own IDE, where surrounding context is one keystroke away.
+
 ## The Solution
 
-`review-walkthrough` flips the dynamic: **the agent acts as an architectural tour guide, not an automated gatekeeper**. It pre-digests the diff, establishes a mental model, designs an optimal reading path from foundation to leaf, and walks the human reviewer through one coherent logical slice at a time.
+`review-walkthrough` acts as an **architectural tour guide, not a gatekeeper**. It analyzes the branch diff once, writes a complete **reading plan** to an ephemeral markdown file, and hands it over: the reviewer opens the plan side-by-side with their native IDE or diff viewer, reads real code at their own pace, and calls on the agent only for emergent questions — answered through neutral, both-hypotheses code investigation.
 
 ---
 
 ## Key Features
 
-- **Base Ref Pinning**: Automatically resolves base branches (`main`, `master`, `develop`) and pins `HEAD` to detect mid-review staleness or rebases.
-- **Topological Reading Roadmap**: Automatically sorts files and hunks in **foundation-to-leaf** dependency order:
-  1. Schemas, Types, and Migrations
-  2. Core Business Logic & State Machines
-  3. Side Effects, I/O & API Endpoints
-  4. Presentation, Controllers & UI Components
-  5. Tests & Tooling
-- **Targeted Reviewer Spotlight**: Anchors 2–3 probing questions to exact line numbers and variables in each hunk (e.g., invariants, boundary values, error propagation).
-- **Interactive Pacing**: Delivers Step 1 first and waits for reviewer feedback (`next`, `skip`, or questions) before continuing.
-- **Sign-off Recap**: Aggregates all concerns, action items, and agreements logged during the interactive turns into a final sign-off checklist.
+- **One-Shot Reading Plan**: A complete, structured markdown artifact — topological itinerary, risk hypotheses, blind spots — written to an ephemeral, never-git-tracked location, opened side-by-side with your editor.
+- **Split Recommendation**: For oversized diffs, the plan opens by stating that splitting the PR is the superior fix and suggests a boundary — then still guides the review for diffs that can't be split.
+- **Topological Itinerary**: Foundation-to-leaf reading order (Schemas → Domain Logic → I/O & Workers → UI → Tests) as interactive checkboxes with clickable `file:line` links and a per-slice rationale.
+- **Anchored Risk Hypotheses**: 3–5 concrete, line-referenced open questions (concurrency, boundary values, rollback semantics, backward compatibility) — hypotheses to verify, never conclusions.
+- **Verification Blind Spots**: What the automated tests cover vs. what requires manual verification.
+- **Base Ref Pinning & Staleness Detection**: Pins `HEAD` at plan time and re-checks it during the review, offering to regenerate after a rebase or amend.
+- **Progressive Tooling**: Uses graph/structural MCP tools when available; degrades gracefully to git and grep when not — and labels heuristic findings as such.
+- **Anti-Bias Q&A**: Emergent questions are investigated under a both-hypotheses mandate (via a neutral research subagent where supported), never by confirming a predetermined answer.
+- **Zero Unsolicited Output**: No automatic sign-off recaps or PR comments — logged findings are compiled into a ready-to-post markdown block only on explicit request.
 
 ---
 
@@ -42,25 +43,26 @@ In any compatible AI assistant (Claude Code, Cursor, OpenCode, Codex, Antigravit
 
 - *"Walk me through the changes on this branch"*
 - *"Can you give me a guided code review?"*
-- *"Review this PR step-by-step against main"*
-- *"Walk through diff chunk by chunk"*
+- *"Review this PR against main"*
+- *"Generate a reading plan for this diff"*
 
 ---
 
-## Interactive Walkthrough Lifecycle
+## Lifecycle
 
 ```mermaid
 flowchart TD
-    A[Inspect Git Diff & Pin HEAD] --> B[Phase 1: Orientation & Mental Model]
-    B --> C[Phase 2: Dependency-Ordered Roadmap]
-    C --> D[Phase 3: Present Step 1 Hunk & Spotlight]
-    D --> E{Reviewer Input}
-    E -- "next" --> F[Present Next Step]
-    E -- "critique / question" --> G[Investigate Code & Clarify]
-    G --> D
-    F --> H{More Steps?}
-    H -- Yes --> E
-    H -- No --> I[Phase 4: Sign-off Recap & Action Items]
+    A[Inspect Git Diff & Pin HEAD] --> B[Split Assessment & Structural Analysis]
+    B --> C[Write Architectural Reading Plan to Ephemeral File]
+    C --> D[Chat Briefing: Plan Path + Top Risks]
+    D --> E[Standby: Reviewer Reads Real Code in Their IDE]
+    E --> F{Reviewer Input}
+    F -- "ad-hoc question" --> G[Neutral Both-Hypotheses Investigation]
+    G --> E
+    F -- "push / amend / rebase" --> H[Staleness Check: Regenerate Plan]
+    H --> C
+    F -- "explicit request" --> I[Compile Logged Concerns into PR Comment]
+    I --> E
 ```
 
 ---
@@ -86,14 +88,37 @@ Copy or symlink `skills/review-walkthrough` into your agent harness's designated
 
 ---
 
+## Versioning & Releases
+
+This skill follows [Semantic Versioning](https://semver.org). Every release is:
+
+- tagged in git as `review-walkthrough-v<version>`,
+- published with notes on the [GitHub Releases page](https://github.com/SMhdAsadi/my-skills/releases),
+- and recorded in [CHANGELOG.md](CHANGELOG.md).
+
+The skills CLI installs the default branch (latest) by default. To pin a specific version, install from the tag URL:
+
+```bash
+# Latest (tracks main)
+npx skills add SMhdAsadi/my-skills@review-walkthrough
+
+# Pinned to v2.0.0
+npx skills add https://github.com/SMhdAsadi/my-skills/tree/review-walkthrough-v2.0.0
+```
+
+Note: in `owner/repo@review-walkthrough`, the `@` suffix selects the *skill*, not a version — version pinning is done via the tag URL above. The current version is also recorded in `SKILL.md` under `metadata.version` (informational, per the Agent Skills spec).
+
+---
+
 ## File Structure
 
 ```
 skills/review-walkthrough/
 ├── SKILL.md                 # Agent instructions (Agent Skills format)
 ├── README.md                # Human-facing guide (this file)
+├── CHANGELOG.md             # Version history (Keep a Changelog)
 └── references/
-    └── review-rubric.md     # Reference heuristics for layering & spotlight questions
+    └── review-rubric.md     # Layering heuristics, risk-hypothesis formulas, investigation templates
 ```
 
 ---

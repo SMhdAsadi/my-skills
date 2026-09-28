@@ -26,7 +26,7 @@ Interactive chat walkthroughs introduce problems of their own: turn-by-turn gati
 ## Key Features
 
 - **Lean Review Walkthrough**: A compact, structured markdown artifact (~40–60 lines) written to an ephemeral, never-git-tracked location, opened side-by-side with your editor. Zero fluff, zero academic pretense.
-- **Language-Agnostic & Conversational**: Naturally matches the language of your prompt (German, Persian, Spanish, etc.) in a relaxed, punchy peer-to-peer developer voice.
+- **Language-Agnostic & Conversational**: Naturally matches the language of your prompt (German, Persian, Spanish, etc.) in a relaxed, punchy peer-to-peer developer voice, with fully localized headings/labels and RTL layout preservation while keeping technical code terms intact.
 - **Gotchas & Risks Upfront**: 2–4 line-anchored, practical edge cases right below the 2-sentence summary — spotting traps before you dive into the code.
 - **File-Grouped Reading Order**: Logical foundation-to-leaf reading sequence grouped by file with clickable links (no fragmented line-by-line bullets or clunky ASCII trees).
 - **Split Recommendation**: For oversized diffs, suggests splitting the PR before generating the walkthrough.
@@ -102,8 +102,8 @@ The skills CLI installs the default branch (latest) by default. To pin a specifi
 # Latest (tracks main)
 npx skills add SMhdAsadi/my-skills@review-walkthrough
 
-# Pinned to v2.1.1
-npx skills add https://github.com/SMhdAsadi/my-skills/tree/review-walkthrough-v2.1.1
+# Pinned to v2.1.2
+npx skills add https://github.com/SMhdAsadi/my-skills/tree/review-walkthrough-v2.1.2
 ```
 
 Note: in `owner/repo@review-walkthrough`, the `@` suffix selects the *skill*, not a version — version pinning is done via the tag URL above. The current version is also recorded in `SKILL.md` under `metadata.version` (informational, per the Agent Skills spec).

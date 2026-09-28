@@ -5,7 +5,7 @@ license: MIT
 compatibility: "git >= 2.0"
 metadata:
   author: SMhd
-  version: "2.1.1"
+  version: "2.1.2"
   tags:
     - git
     - code-review
@@ -81,33 +81,58 @@ Report the resolved absolute path to the user so they can open it directly in th
 
 #### 4b. Tone & Style Guidelines (Anti-Fatigue)
 
-- **Language Adaptation:** Always write the review walkthrough in the user's active conversation language (the language they used in their prompt).
-- **Everyday Spoken Developer Voice:** Write like a sharp colleague sitting right next to the reviewer. Be punchy, conversational, and direct. Use natural spoken phrasing ("Heads up", "Watch out for", "Check if").
+- **Language Adaptation & Localization:** Always write the review walkthrough in the user's active conversation language (the language used in their prompt).
+  - **Full Document Localization:** Translate all structural section headings, title prefixes, and metadata labels into the active language (`# Review Walkthrough:` → `# راهنمای بررسی:`, `**Affects:**` → `**بخش‌های تحت‌تأثیر:**`, `### The Gist` → `### خلاصه تغییرات`, `### Heads Up` → `### نکات حساس و ریسک‌ها`, `### Suggested Reading Order` → `### ترتیب پیشنهادی بررسی`, `*Skim:*` → `*بررسی گذرا:*`, `### What to Test` → `### مواردی که باید تست شوند`).
+  - **No Bilingual Tagging:** Write pure native titles. Never retain hardcoded English headings or append English duplicates in parentheses (e.g., do NOT write `### Heads Up (نکات...)` or `### ترتیب بررسی (Suggested Reading Order)` or `**Affects:**`).
+  - **RTL Layout Preservation:** In Right-to-Left (RTL) languages (Persian, Arabic, Hebrew), every heading and metadata label must start with a native RTL word so that markdown renderers resolve the line and paragraph direction to RTL. Starting lines with English words breaks text alignment and flips punctuation.
+  - **Technical Terms Remain in English:** Code symbols, identifiers, file names, branch names, CLI flags, and native frameworks/libraries (`WebRTC`, `Bluetooth`, `AVAudioSession`, `useFocusEffect`, etc.) should remain in English and be wrapped in backticks where appropriate.
+- **Everyday Spoken Developer Voice:** Write like a sharp colleague sitting right next to the reviewer. Be punchy, conversational, and direct. Use natural spoken phrasing ("Heads up", "Watch out for", "Check if" in English, or their natural spoken equivalents in the target language).
 - **Zero Academic Fluff:** Avoid stiff corporate or academic jargon (e.g., "Executive Context & Invariant Delta", "Topological Itinerary", "Tier-1 Grounded Blast Radius"). Avoid legalistic disclaimer callouts.
 - **Fit in 1–2 Screens:** Target roughly 40–60 lines total. High signal density, zero fluff, minimal scrollbar fatigue.
 
 #### 4c. Walkthrough Structure
 
+Render all section titles and labels in the active conversation language (see reference table below).
+
 1. **Header & Quick Scope:**
-   - Title: `# Review Walkthrough: <Branch / Feature Name>`
-   - Scope bar (single compact line): `<branch>` → `<base>` • **X files (+Y / -Z)**
-   - Blast Radius: `**Affects:** <1-line summary of components/state affected>`
+   - Title: `# <Review Walkthrough Title>: <Branch / Feature Name>`
+   - Scope bar (single compact line): `<branch>` → `<base>` • **<X files> (+Y / -Z)**
+   - Blast Radius: `**<Affects Label>:** <1-line summary of components/state affected>`
    - Do NOT include multi-row tables with 40-character commit hashes, and do NOT include disclaimer callouts.
 2. **Split Recommendation:** (Only when Section 2 applies for massive diffs).
-3. **The Gist:**
+   - Heading: `### <Split Recommendation Title>`
+3. **The Gist (Core Summary):**
+   - Heading: `### <The Gist Title>`
    - 2–3 short sentences in everyday language: what this change actually does, and what must stay untouched.
 4. **Heads Up (Key Gotchas & Risks):**
+   - Heading: `### <Heads Up / Risks Title>`
    - Placed right after The Gist so the reviewer sees pitfalls *before* diving into the code.
    - 2–4 concrete, line-anchored gotchas.
-   - Format: `- **<Gotcha Title>** ([file.ext:line](...)): <1-2 conversational sentences explaining the trap or edge case>.`
+   - Format: `- **<Gotcha Title in user language>** ([file.ext:line](#)): <1-2 conversational sentences explaining the trap or edge case>.`
 5. **Suggested Reading Order:**
+   - Heading: `### <Suggested Reading Order Title>`
    - Foundation first, then UI/consumers.
    - **Group by file:** Do not create separate bullet points for multiple small line ranges in the same file. Use a consolidated range (e.g., `VSlider.tsx:49-180`) with a brief summary of changes in that file.
    - Checkboxes with direct, clickable `file:line` links.
-   - **Skimmable files:** Do NOT create a separate table for boilerplate or docs. Add a single line at the end: `*Skim: <file1>, <file2>*`.
+   - **Skimmable files:** Do NOT create a separate table for boilerplate or docs. Add a single line at the end: `*<Skim Label>: <file1>, <file2>*`.
    - Do NOT include ASCII box diagrams unless the diff is massive (>20 files) with complex multi-branching.
 6. **What to Test:**
+   - Heading: `### <What to Test Title>`
    - 2–3 quick bullet points naming practical test cases, device scenarios, or automated test commands.
+
+##### Heading & Label Reference by Language
+| Element | English | Persian (فارسی) | German | Spanish |
+| :--- | :--- | :--- | :--- | :--- |
+| **Title Prefix** | `# Review Walkthrough:` | `# راهنمای بررسی:` | `# Review-Überblick:` | `# Guía de Revisión:` |
+| **Affects Label** | `**Affects:**` | `**بخش‌های تحت‌تأثیر:**` | `**Betrifft:**` | `**Afecta:**` |
+| **Split Section** | `### Split Recommendation` | `### پیشنهاد تفکیک برنچ` | `### Aufteilungsempfehlung` | `### Sugerencia de División` |
+| **Gist Section** | `### The Gist` | `### خلاصه تغییرات` | `### Das Wichtigste` | `### En Resumen` |
+| **Gotchas Section** | `### Heads Up` | `### نکات حساس و ریسک‌ها` | `### Achtung: Risiken & Fallstricke` | `### Puntos Críticos y Riesgos` |
+| **Reading Order** | `### Suggested Reading Order` | `### ترتیب پیشنهادی بررسی` | `### Empfohlene Lesereihenfolge` | `### Orden de Lectura Sugerido` |
+| **Skim Label** | `*Skim:*` | `*بررسی گذرا:*` | `*Überfliegen:*` | `*Vistazo rápido:*` |
+| **Test Section** | `### What to Test` | `### مواردی که باید تست شوند` | `### Was getestet werden sollte` | `### Qué Probar` |
+
+*(For languages not listed, translate the concepts idiomatically using the same natural, non-bilingual pattern).*
 
 **Anchoring rule:** every substantive claim or gotcha must reference a verifiable `file:line`. If a mechanism cannot be anchored, flag it explicitly or omit it.
 
@@ -117,7 +142,7 @@ Report the resolved absolute path to the user so they can open it directly in th
 
 ### 5. Chat Briefing
 
-After writing the walkthrough, reply concisely (3–5 lines max):
+After writing the walkthrough, reply concisely in the user's conversation language (3–5 lines max):
 
 - The absolute path to the review walkthrough artifact.
 - A 1-line recap of the branch and diff size.

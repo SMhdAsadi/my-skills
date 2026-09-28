@@ -7,6 +7,13 @@ Each release is tagged `review-walkthrough-v<version>` and published on the [Rel
 
 ---
 
+## [2.1.2] - 2026-09-28
+
+### Fixed
+- **Heading and label localization:** Eliminated hardcoded English section headings (`Review Walkthrough`, `Affects:`, `The Gist`, `Heads Up`, `Suggested Reading Order`, `Skim:`, `What to Test`) and bilingual parenthetical hybrids in non-English walkthroughs. Added a multilingual reference table for standard titles and labels across languages.
+- **RTL layout integrity:** Guaranteed that headings and metadata labels in RTL languages (Persian, Arabic, Hebrew) begin with native RTL terms to prevent markdown renderers from forcing LTR paragraph direction and breaking text alignment or punctuation.
+- **Technical term clarity:** Explicitly preserved English formatting for code symbols, identifiers, branch names, and native framework terms while fully localizing structural chrome.
+
 ## [2.1.1] - 2026-09-28
 
 Unified skill terminology strictly around **"review walkthrough"**:
@@ -55,6 +62,7 @@ A ground-up redesign: the skill no longer walks the reviewer through a diff turn
 
 ---
 
+[2.1.2]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.1.2
 [2.1.1]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.1.1
 [2.1.0]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.1.0
 [2.0.0]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.0.0

@@ -18,19 +18,24 @@ Sequence the files by architectural dependency. Leaf nodes (UI components, API r
 ### Anti-Fatigue Rules for the Reading Order:
 - **Group by File:** Consolidate multiple changes in the same file into a single checklist entry with a range (e.g., `VSlider.tsx:49-180`). Never fragment one file into 4 separate bullets for scattered lines.
 - **Omit ASCII Diagrams:** Do not include ASCII tree diagrams unless the diff is massive (>20 files) and has complex branching. For typical diffs, a simple numbered list is faster to parse and saves vertical space.
-- **Merge Skimmables:** List boilerplate, documentation, lockfiles, and generated files as a single footer note (`*Skim: ...*`) rather than wasting vertical space on a separate table.
+- **Merge Skimmables:** List boilerplate, documentation, lockfiles, and generated files as a single footer note (`*Skim: ...*` or its localized equivalent like `*بررسی گذرا: ...*`) rather than wasting vertical space on a separate table.
 
 ---
 
 ## 2. Heads Up (Gotchas & Risks) Formulation
 
-Gotchas must be line-anchored, practical, and written in direct spoken developer language (matching the user's conversational language). They highlight potential traps, regressions, or subtle edge cases before the reviewer begins reading the diff.
+Gotchas must be line-anchored, practical, and written in direct spoken developer language matching the user's conversational language. They highlight potential traps, regressions, or subtle edge cases before the reviewer begins reading the diff.
+
+### Localization & RTL Guidelines
+- **Pure Localization:** Translate the section header (`### Heads Up` → `### نکات حساس و ریسک‌ها`, `### Achtung: Risiken`, etc.) and gotcha titles without bilingual English tagging (avoid `### Heads Up (نکات...)` or `(Suggested Reading Order)`).
+- **RTL Integrity:** In RTL languages (Persian, Arabic, Hebrew), ensure titles and bullets start with native text rather than English prefixes, allowing the markdown renderer to set right-to-left block direction naturally.
+- **Keep Technical Identifiers Intact:** Function names, variable names, file paths, and established technical concepts (e.g., `mutex.Lock()`, `flexDirection`, `isRTL()`, `WebRTC`, `Bluetooth`) remain in English and should be formatted with code backticks.
 
 ### Tone & Style: Direct vs. Academic
 
 | Style | Don't Do This (Academic & Stiff) | Do This (Conversational & Punchy) |
 | :--- | :--- | :--- |
-| **Header** | `### 1. Concurrency Invariant & Race Window In Worker` | `- **Potential race condition** ([worker.ts:130](...)):` |
+| **Header** | `### 1. Concurrency Invariant & Race Window In Worker` | `- **Potential race condition** ([worker.ts:130](#)):` |
 | **Body** | `Question: Is mutex.Lock() acquired before checking is_active (worker.ts:130), or does a race window exist where two concurrent routines evaluate the predicate simultaneously?` | `Lock is checked after \`is_active\`. If two jobs arrive at once, both might pass before either locks.` |
 | **Layout Flip** | `Question: Within an LTR-directed container, will Yoga layout the video control bar in reverse order when isRTL() evaluates to false?` | `The container forces \`ltr\`, but line 85 still flips \`flexDirection\`. In LTR mode, this might reverse the buttons (fullscreen on left, play on right).` |
 

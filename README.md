@@ -12,7 +12,7 @@ A curated collection of production-grade skills for AI coding agents. Adheres st
 
 | Skill | Category | Description | Primary Triggers |
 | :--- | :--- | :--- | :--- |
-| [`review-walkthrough`](skills/review-walkthrough/) | Code Review / Workflow | Architectural reading plan generator and on-demand review co-pilot. Analyzes a branch diff once, writes a foundation-to-leaf reading plan with anchored risk hypotheses, then stays on standby for emergent Q&A while the reviewer reads real code in their IDE. | *"walk through changes"*, *"review branch"*, *"guided code review"*, *"reading plan for diff"* |
+| [`review-walkthrough`](skills/review-walkthrough/) | Code Review / Workflow | Anti-fatigue review walkthrough generator and on-demand review co-pilot. Analyzes a branch diff once, writes a compact (~40–60 line), high-signal review walkthrough in everyday spoken developer language to an ephemeral markdown artifact, then stays on standby for emergent Q&A while the reviewer reads real code in their IDE. | *"walk through changes"*, *"review branch"*, *"guided code review"*, *"review walkthrough for diff"* |
 
 ---
 
@@ -94,7 +94,7 @@ my-skills/
 ├── LICENSE                   # MIT License
 ├── README.md                 # Repository catalog and installation documentation
 └── skills/
-    └── review-walkthrough/   # Architectural reading plan generator & review co-pilot
+    └── review-walkthrough/   # Anti-fatigue review walkthrough generator & review co-pilot
         ├── SKILL.md          # Agent specification and instructions
         ├── README.md         # Detailed human-facing documentation
         ├── CHANGELOG.md      # Per-skill version history (Keep a Changelog)

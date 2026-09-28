@@ -7,6 +7,12 @@ Each release is tagged `review-walkthrough-v<version>` and published on the [Rel
 
 ---
 
+## [2.1.1] - 2026-09-28
+
+Unified skill terminology strictly around **"review walkthrough"**:
+- Replaced lingering references to *"Architectural Reading Plan"*, legacy *"plan"*, and *"review guide"* across `SKILL.md`, `README.md`, Mermaid lifecycle diagrams, and repository documentation with **"review walkthrough"**.
+- Aligned trigger keywords and catalog descriptions across `AGENTS.md`, `README.md`, and `CLAUDE.md`.
+
 ## [2.1.0] - 2026-09-28
 
 Anti-fatigue and pragmatic redesign to streamline human review speed and eliminate reading exhaustion.
@@ -49,6 +55,7 @@ A ground-up redesign: the skill no longer walks the reviewer through a diff turn
 
 ---
 
+[2.1.1]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.1.1
 [2.1.0]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.1.0
 [2.0.0]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.0.0
 [1.0.0]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v1.0.0

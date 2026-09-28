@@ -1,11 +1,11 @@
 ---
 name: review-walkthrough
-description: "Generates an architectural reading plan for a branch diff, then stays on standby as an on-demand review co-pilot. Use when the user wants to walk through changes, review a branch, examine a diff, or asks for a guided code review."
+description: "Generates an anti-fatigue review walkthrough for a branch diff, then stays on standby as an on-demand review co-pilot. Use when the user wants to walk through changes, review a branch, examine a diff, or asks for a guided code review."
 license: MIT
 compatibility: "git >= 2.0"
 metadata:
   author: SMhd
-  version: "2.1.0"
+  version: "2.1.1"
   tags:
     - git
     - code-review
@@ -15,9 +15,9 @@ metadata:
 
 # Review Walkthrough
 
-An **Anti-Fatigue Review Guide Generator and On-Demand Review Co-Pilot** designed to help developers review code better and faster in their native IDE.
+An **Anti-Fatigue Review Walkthrough Generator and On-Demand Review Co-Pilot** designed to help developers review code better and faster in their native IDE.
 
-Instead of dumping a wall of formal academic text or gating the review behind turn-by-turn chat steps, this skill analyzes the branch diff once, writes a lean, high-signal, engaging **review guide** to an ephemeral markdown artifact, and then stands by: the human reviews at their own pace in their IDE or diff viewer, and asks the agent questions only when they hit ambiguities, tricky logic, or suspected bugs. Consult [`references/review-rubric.md`](references/review-rubric.md) for layering heuristics, risk-hypothesis formulas, and investigation templates.
+Instead of dumping a wall of formal academic text or gating the review behind turn-by-turn chat steps, this skill analyzes the branch diff once, writes a lean, high-signal, engaging **review walkthrough** to an ephemeral markdown artifact, and then stands by: the human reviews at their own pace in their IDE or diff viewer, and asks the agent questions only when they hit ambiguities, tricky logic, or suspected bugs. Consult [`references/review-rubric.md`](references/review-rubric.md) for layering heuristics, risk-hypothesis formulas, and investigation templates.
 
 ---
 
@@ -28,7 +28,7 @@ Instead of dumping a wall of formal academic text or gating the review behind tu
 1. Determine the base reference (`main`, `master`, `develop`, or a specific branch/commit named by the user).
    - If unspecified, resolve it silently: check for an upstream tracking branch, then fall back to `main`, then `master`, then `develop`, in that order.
    - Only ask the user if none of these resolve to a valid ref. Otherwise state the assumed base in the chat briefing (Section 5) rather than interrupting up front.
-2. Record the current HEAD commit: `git rev-parse HEAD`. This is the plan's pinned commit — see Section 6 for staleness handling.
+2. Record the current HEAD commit: `git rev-parse HEAD`. This is the walkthrough's pinned commit — see Section 6 for staleness handling.
 3. Inspect the diff and commit history:
    ```bash
    git rev-parse <base>
@@ -36,17 +36,17 @@ Instead of dumping a wall of formal academic text or gating the review behind tu
    git diff <base>...HEAD --stat
    ```
 4. Check that the diff is non-empty. If empty or invalid, report this immediately.
-5. Gauge diff size (files changed, lines changed). This drives the split assessment (Section 2) and the plan's scale (Section 4).
-6. Read the changed files and hunk details to understand the core mechanisms before generating the plan.
+5. Gauge diff size (files changed, lines changed). This drives the split assessment (Section 2) and the walkthrough's scale (Section 4).
+6. Read the changed files and hunk details to understand the core mechanisms before generating the walkthrough.
 
 ---
 
 ### 2. Split Assessment (Root Cause First)
 
-Large diffs are the primary driver of review fatigue and missed defects. If the diff exceeds the large-diff threshold (rough guide: >15 files or >800 changed lines):
+Large diffs are the primary driver of review fatigue and missed defects. If the diff exceeds the large-diff threshold (rule of thumb: >15 files or >800 changed lines):
 
-- Open the plan with an explicit **Split Recommendation**: state that splitting the change into smaller, independently reviewable units is the superior fix, and suggest a concrete split boundary when one is visible (e.g., schema migration first, then domain logic, then consumers).
-- Still generate the full plan — reviewers frequently inherit diffs they cannot split (AI-authored branches, legacy changes, external PRs).
+- Open the walkthrough with an explicit **Split Recommendation**: state that splitting the change into smaller, independently reviewable units is the superior fix, and suggest a concrete split boundary when one is visible (e.g., schema migration first, then domain logic, then consumers).
+- Still generate the full walkthrough — reviewers frequently inherit diffs they cannot split (AI-authored branches, legacy changes, external PRs).
 
 For typical-sized diffs, omit this section entirely.
 
@@ -65,31 +65,31 @@ Remain portable across harnesses while exploiting graph-based code intelligence 
 
 ---
 
-### 4. Generate the Review Guide
+### 4. Generate the Review Walkthrough
 
-Write the complete guide as a single markdown artifact. **One shot** — do not page it through chat.
+Write the complete walkthrough as a single markdown artifact. **One shot** — do not page it through chat.
 
 #### 4a. Resolve the Storage Path (Ephemeral, Never Git-Tracked)
 
-The guide is a disposable draft. It must never be committed and never live in `.git/`. Resolve the path using this fallback hierarchy:
+The walkthrough is a disposable draft. It must never be committed and never live in `.git/`. Resolve the path using this fallback hierarchy:
 
 1. **Agent harness storage (first priority):** the harness's dedicated artifact/scratch directory, if the environment provides one.
 2. **Repository temp directory:** a local scratch directory (e.g., `tmp/`, `.tmp/`), but only after verifying with `git check-ignore` that it is excluded from tracking.
-3. **System temp directory (final fallback):** e.g., `/tmp/review-guide-<branch>-<timestamp>.md` on Unix.
+3. **System temp directory (final fallback):** e.g., `/tmp/review-walkthrough-<branch>-<timestamp>.md` on Unix.
 
 Report the resolved absolute path to the user so they can open it directly in their editor.
 
 #### 4b. Tone & Style Guidelines (Anti-Fatigue)
 
-- **Language Adaptation:** Always write the review guide in the user's active conversation language (the language they used in their prompt).
+- **Language Adaptation:** Always write the review walkthrough in the user's active conversation language (the language they used in their prompt).
 - **Everyday Spoken Developer Voice:** Write like a sharp colleague sitting right next to the reviewer. Be punchy, conversational, and direct. Use natural spoken phrasing ("Heads up", "Watch out for", "Check if").
 - **Zero Academic Fluff:** Avoid stiff corporate or academic jargon (e.g., "Executive Context & Invariant Delta", "Topological Itinerary", "Tier-1 Grounded Blast Radius"). Avoid legalistic disclaimer callouts.
 - **Fit in 1–2 Screens:** Target roughly 40–60 lines total. High signal density, zero fluff, minimal scrollbar fatigue.
 
-#### 4c. Guide Structure
+#### 4c. Walkthrough Structure
 
 1. **Header & Quick Scope:**
-   - Title: `# Review Guide: <Branch / Feature Name>`
+   - Title: `# Review Walkthrough: <Branch / Feature Name>`
    - Scope bar (single compact line): `<branch>` → `<base>` • **X files (+Y / -Z)**
    - Blast Radius: `**Affects:** <1-line summary of components/state affected>`
    - Do NOT include multi-row tables with 40-character commit hashes, and do NOT include disclaimer callouts.
@@ -117,12 +117,12 @@ Report the resolved absolute path to the user so they can open it directly in th
 
 ### 5. Chat Briefing
 
-After writing the guide, reply concisely (3–5 lines max):
+After writing the walkthrough, reply concisely (3–5 lines max):
 
-- The absolute path to the review guide artifact.
+- The absolute path to the review walkthrough artifact.
 - A 1-line recap of the branch and diff size.
 - The split recommendation, if one was issued.
-- The top 2 gotchas from the guide in one line each.
+- The top 2 gotchas from the walkthrough in one line each.
 
 Then stop. Do not walk through steps, do not ask the user to type `next`.
 
@@ -132,7 +132,7 @@ Then stop. Do not walk through steps, do not ask the user to type `next`.
 
 The human drives pacing. The agent answers questions and otherwise stays out of the way.
 
-- **Staleness check:** if the user mentions pushing, amending, or rebasing — or a long gap has passed — re-run `git rev-parse HEAD` and compare to the pinned commit. If it changed, flag it and offer to re-diff and regenerate the guide rather than answering against stale content.
+- **Staleness check:** if the user mentions pushing, amending, or rebasing — or a long gap has passed — re-run `git rev-parse HEAD` and compare to the pinned commit. If it changed, flag it and offer to re-diff and regenerate the walkthrough rather than answering against stale content.
 - **Concern logging:** silently record substantive concerns, todos, and open questions raised during the conversation. Never rely on reconstructing them from scrollback later. The log feeds Section 7.
 - **Answering technical questions** (e.g., *"In Layer 2, does `processOrder` handle concurrent duplicate requests?"*):
   - Investigate neutrally: read the target code, trace real execution paths and callers, and evaluate **both hypotheses** — what protections exist *and* what edge cases could defeat them.

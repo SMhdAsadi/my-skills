@@ -5,7 +5,7 @@ license: MIT
 compatibility: "git >= 2.0"
 metadata:
   author: SMhd
-  version: "2.1.2"
+  version: "2.1.3"
   tags:
     - git
     - code-review
@@ -84,8 +84,8 @@ Report the resolved absolute path to the user so they can open it directly in th
 - **Language Adaptation & Localization:** Always write the review walkthrough in the user's active conversation language (the language used in their prompt).
   - **Full Document Localization:** Translate all structural section headings, title prefixes, and metadata labels into the active language (`# Review Walkthrough:` → `# راهنمای بررسی:`, `**Affects:**` → `**بخش‌های تحت‌تأثیر:**`, `### The Gist` → `### خلاصه تغییرات`, `### Heads Up` → `### نکات حساس و ریسک‌ها`, `### Suggested Reading Order` → `### ترتیب پیشنهادی بررسی`, `*Skim:*` → `*بررسی گذرا:*`, `### What to Test` → `### مواردی که باید تست شوند`).
   - **No Bilingual Tagging:** Write pure native titles. Never retain hardcoded English headings or append English duplicates in parentheses (e.g., do NOT write `### Heads Up (نکات...)` or `### ترتیب بررسی (Suggested Reading Order)` or `**Affects:**`).
-  - **RTL Layout Preservation:** In Right-to-Left (RTL) languages (Persian, Arabic, Hebrew), every heading and metadata label must start with a native RTL word so that markdown renderers resolve the line and paragraph direction to RTL. Starting lines with English words breaks text alignment and flips punctuation.
-  - **Technical Terms Remain in English:** Code symbols, identifiers, file names, branch names, CLI flags, and native frameworks/libraries (`WebRTC`, `Bluetooth`, `AVAudioSession`, `useFocusEffect`, etc.) should remain in English and be wrapped in backticks where appropriate.
+  - **RTL Layout Preservation:** In Right-to-Left (RTL) languages (Persian, Arabic, Hebrew), every line, heading, list item, and metadata label must start with a native RTL word so that markdown renderers resolve the paragraph direction to RTL. Starting lines with English words breaks text alignment and flips punctuation.
+  - **Technical Terms & Acronyms in Latin Script:** Code symbols, identifiers, file paths, protocols, and technical acronyms (e.g., WebRTC, ICE, REST, API) must remain in Latin script (use backticks for code symbols, branch names, and file paths; backticks are optional for general acronyms in prose). Never phonetically transliterate them into native script (e.g., do NOT write وب‌آرتی‌سی for WebRTC, or استیل for stale). For terms without a natural localized form in developer speech, use the standard term (e.g., برنچ rather than an unfamiliar translation like شاخه).
 - **Everyday Spoken Developer Voice:** Write like a sharp colleague sitting right next to the reviewer. Be punchy, conversational, and direct. Use natural spoken phrasing ("Heads up", "Watch out for", "Check if" in English, or their natural spoken equivalents in the target language).
 - **Zero Academic Fluff:** Avoid stiff corporate or academic jargon (e.g., "Executive Context & Invariant Delta", "Topological Itinerary", "Tier-1 Grounded Blast Radius"). Avoid legalistic disclaimer callouts.
 - **Fit in 1–2 Screens:** Target roughly 40–60 lines total. High signal density, zero fluff, minimal scrollbar fatigue.
@@ -96,7 +96,7 @@ Render all section titles and labels in the active conversation language (see re
 
 1. **Header & Quick Scope:**
    - Title: `# <Review Walkthrough Title>: <Branch / Feature Name>`
-   - Scope bar (single compact line): `<branch>` → `<base>` • **<X files> (+Y / -Z)**
+   - Scope bar (single compact line): `**<Branch Label>:** <branch> → <base> • **<X files> (+Y / -Z)**`
    - Blast Radius: `**<Affects Label>:** <1-line summary of components/state affected>`
    - Do NOT include multi-row tables with 40-character commit hashes, and do NOT include disclaimer callouts.
 2. **Split Recommendation:** (Only when Section 2 applies for massive diffs).
@@ -113,7 +113,7 @@ Render all section titles and labels in the active conversation language (see re
    - Heading: `### <Suggested Reading Order Title>`
    - Foundation first, then UI/consumers.
    - **Group by file:** Do not create separate bullet points for multiple small line ranges in the same file. Use a consolidated range (e.g., `VSlider.tsx:49-180`) with a brief summary of changes in that file.
-   - Checkboxes with direct, clickable `file:line` links.
+   - Format: `- [ ] **<File / Component Role in user language>** ([file.ext:line](#)): <Brief summary of changes>.` Checkboxes must have direct, clickable `file:line` links.
    - **Skimmable files:** Do NOT create a separate table for boilerplate or docs. Add a single line at the end: `*<Skim Label>: <file1>, <file2>*`.
    - Do NOT include ASCII box diagrams unless the diff is massive (>20 files) with complex multi-branching.
 6. **What to Test:**
@@ -124,6 +124,7 @@ Render all section titles and labels in the active conversation language (see re
 | Element | English | Persian (فارسی) | German | Spanish |
 | :--- | :--- | :--- | :--- | :--- |
 | **Title Prefix** | `# Review Walkthrough:` | `# راهنمای بررسی:` | `# Review-Überblick:` | `# Guía de Revisión:` |
+| **Branch Label** | `**Branch:**` | `**برنچ:**` | `**Branch:**` | `**Rama:**` |
 | **Affects Label** | `**Affects:**` | `**بخش‌های تحت‌تأثیر:**` | `**Betrifft:**` | `**Afecta:**` |
 | **Split Section** | `### Split Recommendation` | `### پیشنهاد تفکیک برنچ` | `### Aufteilungsempfehlung` | `### Sugerencia de División` |
 | **Gist Section** | `### The Gist` | `### خلاصه تغییرات` | `### Das Wichtigste` | `### En Resumen` |

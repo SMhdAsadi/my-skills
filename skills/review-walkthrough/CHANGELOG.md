@@ -7,6 +7,12 @@ Each release is tagged `review-walkthrough-v<version>` and published on the [Rel
 
 ---
 
+## [2.1.3] - 2026-09-28
+
+### Fixed
+- **RTL Scope bar and Reading Order formatting:** Added `**Branch Label**` (`**برنچ:**` in Persian) to the Scope bar and defined an explicit role-first format for Suggested Reading Order checklist items (`- [ ] **<Role>** ([file:line](#)): <Summary>`). This ensures the first strong character on every line is native, preventing markdown renderers from resolving list items or the branch summary into LTR.
+- **Technical terms and developer vocabulary:** Clarified that technical terms, protocols, and acronyms (WebRTC, ICE, REST, API) must stay in Latin script without phonetic transliteration (avoiding awkward transliterations like وب‌آرتی‌سی or استیل), while clarifying that backticks are optional for acronyms in prose. Standardized everyday developer vocabulary (e.g. preferring برنچ over unfamiliar translations like شاخه).
+
 ## [2.1.2] - 2026-09-28
 
 ### Fixed

@@ -16,6 +16,7 @@ Sequence the files by architectural dependency. Leaf nodes (UI components, API r
 5. **Tests & Tooling** (`*.test.ts`, configs, scripts) — Verification of the layers above.
 
 ### Anti-Fatigue Rules for the Reading Order:
+- **Role-First Format:** Begin each checklist item with a concise bold role or component name in the conversation language, followed by the file link and summary: `- [ ] **<Role>** ([file.ext:line](#)): <Summary>`. In RTL languages, this ensures the line starts with native text so the list item renders right-to-left.
 - **Group by File:** Consolidate multiple changes in the same file into a single checklist entry with a range (e.g., `VSlider.tsx:49-180`). Never fragment one file into 4 separate bullets for scattered lines.
 - **Omit ASCII Diagrams:** Do not include ASCII tree diagrams unless the diff is massive (>20 files) and has complex branching. For typical diffs, a simple numbered list is faster to parse and saves vertical space.
 - **Merge Skimmables:** List boilerplate, documentation, lockfiles, and generated files as a single footer note (`*Skim: ...*` or its localized equivalent like `*بررسی گذرا: ...*`) rather than wasting vertical space on a separate table.
@@ -28,8 +29,8 @@ Gotchas must be line-anchored, practical, and written in direct spoken developer
 
 ### Localization & RTL Guidelines
 - **Pure Localization:** Translate the section header (`### Heads Up` → `### نکات حساس و ریسک‌ها`, `### Achtung: Risiken`, etc.) and gotcha titles without bilingual English tagging (avoid `### Heads Up (نکات...)` or `(Suggested Reading Order)`).
-- **RTL Integrity:** In RTL languages (Persian, Arabic, Hebrew), ensure titles and bullets start with native text rather than English prefixes, allowing the markdown renderer to set right-to-left block direction naturally.
-- **Keep Technical Identifiers Intact:** Function names, variable names, file paths, and established technical concepts (e.g., `mutex.Lock()`, `flexDirection`, `isRTL()`, `WebRTC`, `Bluetooth`) remain in English and should be formatted with code backticks.
+- **RTL Integrity:** In RTL languages (Persian, Arabic, Hebrew), ensure titles, bullets, and checklist items start with native text rather than English prefixes, allowing the markdown renderer to set right-to-left block direction naturally.
+- **Technical Terms & Acronyms in Latin Script:** Code symbols, identifiers, file paths, protocols, and technical acronyms (e.g., WebRTC, ICE, `mutex.Lock()`, `flexDirection`) remain in Latin script (backticks for code/identifiers/paths; optional for general acronyms in prose). Never phonetically transliterate them into native script (e.g., do NOT write وب‌آرتی‌سی for WebRTC, or استیل for stale). For terms without a natural localized form in developer speech, use the standard term (e.g., برنچ rather than an unfamiliar translation like شاخه).
 
 ### Tone & Style: Direct vs. Academic
 

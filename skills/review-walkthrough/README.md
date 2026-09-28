@@ -3,35 +3,35 @@
 [![Agent Skills Standard](https://img.shields.io/badge/Agent%20Skills-Standard-0A84FF?style=flat-square)](https://agentskills.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](../../LICENSE)
 
-An **Architectural Reading Plan Generator and On-Demand Review Co-Pilot** for AI agents, designed to maximize the depth, clarity, and speed of **human** code reviews.
+An **Anti-Fatigue Review Guide Generator and On-Demand Review Co-Pilot** for AI agents, designed to maximize the depth, clarity, and speed of **human** code reviews.
 
 ---
 
 ## The Problem
 
-Most AI code review tools dump static lints, nitpicks, or a wall of pass/fail badges across an entire diff. When reviewing large or multi-layered pull requests, human reviewers experience:
+Most AI code review tools dump static lints, nitpicks, or an overwhelming wall of academic text and pass/fail badges across an entire diff. When reviewing pull requests, human reviewers experience:
 
-1. **Diff Fatigue**: Trying to parse 20+ files at once without a coherent reading sequence.
-2. **Reviewer Blindness**: Glossing over critical schema or invariant changes buried in the middle of cosmetic updates.
-3. **Loss of Context**: Missing the mental model that connects data structures to the downstream UI components.
+1. **Reading Fatigue**: Verbose formal reports with academic jargon, disclaimer banners, ASCII diagrams, and multi-row tables that stretch the scrollbar.
+2. **Reviewer Blindness**: Glossing over critical gotchas or subtle bugs buried in pages of fluff.
+3. **Loss of Flow**: Trying to parse 20+ files at once without a clean, file-grouped reading sequence.
 
-Interactive chat walkthroughs address part of this but introduce problems of their own: turn-by-turn gating that fights asynchronous review habits, and trimmed code hunks trapped in a chat window — a far worse reading surface than the reviewer's own IDE, where surrounding context is one keystroke away.
+Interactive chat walkthroughs introduce problems of their own: turn-by-turn gating that fights asynchronous review habits, and trimmed code hunks trapped in a chat window — a far worse reading surface than the reviewer's own IDE, where surrounding context is one keystroke away.
 
 ## The Solution
 
-`review-walkthrough` acts as an **architectural tour guide, not a gatekeeper**. It analyzes the branch diff once, writes a complete **reading plan** to an ephemeral markdown file, and hands it over: the reviewer opens the plan side-by-side with their native IDE or diff viewer, reads real code at their own pace, and calls on the agent only for emergent questions — answered through neutral, both-hypotheses code investigation.
+`review-walkthrough` acts as a **lean, practical review co-pilot**. It analyzes the branch diff once, writes a compact (~40–60 line) **review guide** to an ephemeral markdown file, and hands it over: the reviewer opens the guide side-by-side with their native IDE or diff viewer, reads real code at their own pace, and calls on the agent only for emergent questions — answered through neutral, both-hypotheses code investigation.
 
 ---
 
 ## Key Features
 
-- **One-Shot Reading Plan**: A complete, structured markdown artifact — topological itinerary, risk hypotheses, blind spots — written to an ephemeral, never-git-tracked location, opened side-by-side with your editor.
-- **Split Recommendation**: For oversized diffs, the plan opens by stating that splitting the PR is the superior fix and suggests a boundary — then still guides the review for diffs that can't be split.
-- **Topological Itinerary**: Foundation-to-leaf reading order (Schemas → Domain Logic → I/O & Workers → UI → Tests) as interactive checkboxes with clickable `file:line` links and a per-slice rationale.
-- **Anchored Risk Hypotheses**: 3–5 concrete, line-referenced open questions (concurrency, boundary values, rollback semantics, backward compatibility) — hypotheses to verify, never conclusions.
-- **Verification Blind Spots**: What the automated tests cover vs. what requires manual verification.
-- **Base Ref Pinning & Staleness Detection**: Pins `HEAD` at plan time and re-checks it during the review, offering to regenerate after a rebase or amend.
-- **Progressive Tooling**: Uses graph/structural MCP tools when available; degrades gracefully to git and grep when not — and labels heuristic findings as such.
+- **Lean Review Guide**: A compact, structured markdown artifact (~40–60 lines) written to an ephemeral, never-git-tracked location, opened side-by-side with your editor. Zero fluff, zero academic pretense.
+- **Language-Agnostic & Conversational**: Naturally matches the language of your prompt (German, Persian, Spanish, etc.) in a relaxed, punchy peer-to-peer developer voice.
+- **Gotchas & Risks Upfront**: 2–4 line-anchored, practical edge cases right below the 2-sentence summary — spotting traps before you dive into the code.
+- **File-Grouped Reading Order**: Logical foundation-to-leaf reading sequence grouped by file with clickable links (no fragmented line-by-line bullets or clunky ASCII trees).
+- **Split Recommendation**: For oversized diffs, suggests splitting the PR before generating the guide.
+- **Base Ref Pinning & Staleness Detection**: Pins `HEAD` at guide generation time and re-checks it during review, offering to regenerate after a rebase or amend.
+- **Progressive Tooling**: Uses graph/structural MCP tools when available; degrades gracefully to git and grep when not.
 - **Anti-Bias Q&A**: Emergent questions are investigated under a both-hypotheses mandate (via a neutral research subagent where supported), never by confirming a predetermined answer.
 - **Zero Unsolicited Output**: No automatic sign-off recaps or PR comments — logged findings are compiled into a ready-to-post markdown block only on explicit request.
 

@@ -34,9 +34,9 @@ Skills are versioned independently with SemVer. When a skill's behavior changes 
 | `review-walkthrough` | "walk through changes", "review branch", "guided review", "reading plan for diff" | [`skills/review-walkthrough/SKILL.md`](skills/review-walkthrough/SKILL.md) |
 
 ### `review-walkthrough`
-- **Purpose**: Architectural reading plan generator and on-demand review co-pilot. Analyzes a branch diff once, writes a topologically ordered (foundation to leaf) reading plan to an ephemeral markdown artifact, then stays on standby to answer reviewer questions while they read the real code in their own IDE.
-- **Activation**: When asked to review changes, walk through a branch, examine a branch diff, or generate a reading plan for a PR.
-- **Contract**: One-shot plan generation with split assessment, anchored risk hypotheses, and verification blind spots; passive standby afterward — no turn-by-turn gating, no hunk reveals, no unsolicited sign-offs. Emergent questions are investigated under a both-hypotheses mandate; PR-ready review comments are compiled from logged concerns only on explicit request.
+- **Purpose**: Anti-fatigue review guide generator and on-demand review co-pilot. Analyzes a branch diff once, writes a compact (~40–60 line), high-signal review guide in everyday spoken developer language (automatically adapting to the user's conversation language) to an ephemeral markdown artifact, then stays on standby to answer reviewer questions while they read the real code in their own IDE.
+- **Activation**: When asked to review changes, walk through a branch, examine a branch diff, or generate a review guide for a PR.
+- **Contract**: One-shot guide generation with split assessment, gotchas prioritized up front, file-grouped reading order, and verification checklist; passive standby afterward — no turn-by-turn gating, no hunk reveals, no unsolicited sign-offs. Emergent questions are investigated under a both-hypotheses mandate; PR-ready review comments are compiled from logged concerns only on explicit request.
 
 ## Harness Compatibility Guidelines
 

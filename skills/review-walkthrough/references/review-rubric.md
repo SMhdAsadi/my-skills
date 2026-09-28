@@ -1,64 +1,45 @@
 # Review Walkthrough Rubric & Reference
 
-Supplementary heuristics for executing the `review-walkthrough` skill: layer sequencing, risk-hypothesis formulation, and neutral-investigation templates.
+Supplementary heuristics for executing the `review-walkthrough` skill: practical sequencing, punchy gotcha formulation, and neutral-investigation templates.
 
 ---
 
-## 1. Topological Reading Order (Foundation to Leaf)
+## 1. Suggested Reading Order (Foundation to Leaf)
 
-Sequence the itinerary by architectural dependency. Leaf nodes cannot be properly evaluated without first understanding the underlying contracts and domain rules.
+Sequence the files by architectural dependency. Leaf nodes (UI components, API routes) cannot be properly evaluated without first understanding the underlying data contracts and domain rules.
 
-```
-[Layer 1: Schemas & Types]
-       │
-       ▼
-[Layer 2: Core Domain Logic]
-       │
-       ▼
-[Layer 3: Side Effects & I/O]
-       │
-       ▼
-[Layer 4: Presentation & UI]
-       │
-       ▼
-[Layer 5: Tests & Infrastructure]
-```
+### Core Order Principle
+1. **Data Models & Types** (`*.types.ts`, schemas, migrations) — Defines data shapes and invariants.
+2. **Core Domain Logic & State** (`services/`, state reducers, business rules) — Algorithms and logic independent of I/O.
+3. **Side Effects & I/O** (`controllers/`, HTTP clients, DB queries, workers) — External integration.
+4. **Presentation & UI** (`components/`, views, styling) — Visual rendering and state binding.
+5. **Tests & Tooling** (`*.test.ts`, configs, scripts) — Verification of the layers above.
 
-### Layer Definitions
-
-| Order | Layer | File Patterns / Examples | Why Review Here First |
-| :---: | :--- | :--- | :--- |
-| **1** | **Data Models & Types** | `*.types.ts`, `schema.prisma`, `models.py`, DB migrations | Defines the data shape and invariants. All downstream code depends on these definitions. |
-| **2** | **Core Domain Logic** | `services/`, `domain/`, state reducers, business rules | The heart of the change. Verifies algorithms, invariants, and edge conditions independent of I/O. |
-| **3** | **Side Effects & I/O** | `controllers/`, `api/`, HTTP endpoints, DB queries, RPC, workers | Verifies how the system talks to external networks, disk, or databases. |
-| **4** | **Presentation & UI** | `components/`, views, styling, templates | Validates user experience, state binding, and visual handling of loading/error states. |
-| **5** | **Tests & Tooling** | `*.test.ts`, `*_test.go`, configs, CI workflows | Verifies test coverage, assertions, and build setup against the changes reviewed in layers 1–4. |
-
-Not every diff touches every layer — merge or omit empty layers per the plan's scaling rule. In tangled codebases where no clean layering exists, order by observed caller/callee dependency instead of forcing the template.
+### Anti-Fatigue Rules for the Reading Order:
+- **Group by File:** Consolidate multiple changes in the same file into a single checklist entry with a range (e.g., `VSlider.tsx:49-180`). Never fragment one file into 4 separate bullets for scattered lines.
+- **Omit ASCII Diagrams:** Do not include ASCII tree diagrams unless the diff is massive (>20 files) and has complex branching. For typical diffs, a simple numbered list is faster to parse and saves vertical space.
+- **Merge Skimmables:** List boilerplate, documentation, lockfiles, and generated files as a single footer note (`*Skim: ...*`) rather than wasting vertical space on a separate table.
 
 ---
 
-## 2. Risk Radar Hypothesis Formulas
+## 2. Heads Up (Gotchas & Risks) Formulation
 
-Radar entries must avoid generic fluff ("is this tested?"). Each is an **open question** anchored to a specific symbol, line range, or failure mode in the diff — a hypothesis for the reviewer to verify against the real code, never a conclusion.
+Gotchas must be line-anchored, practical, and written in direct spoken developer language (matching the user's conversational language). They highlight potential traps, regressions, or subtle edge cases before the reviewer begins reading the diff.
 
-### Question Categories & Examples
+### Tone & Style: Direct vs. Academic
 
-#### A. Invariants & Boundary Conditions
-- *"In `calculate_fee` (`billing.ts:42-48`), what happens if `total_cents` is zero or negative?"*
-- *"`items` appears to be assumed non-empty at `cart.ts:89`. Is an empty slice guarded upstream?"*
+| Style | Don't Do This (Academic & Stiff) | Do This (Conversational & Punchy) |
+| :--- | :--- | :--- |
+| **Header** | `### 1. Concurrency Invariant & Race Window In Worker` | `- **Potential race condition** ([worker.ts:130](...)):` |
+| **Body** | `Question: Is mutex.Lock() acquired before checking is_active (worker.ts:130), or does a race window exist where two concurrent routines evaluate the predicate simultaneously?` | `Lock is checked after \`is_active\`. If two jobs arrive at once, both might pass before either locks.` |
+| **Layout Flip** | `Question: Within an LTR-directed container, will Yoga layout the video control bar in reverse order when isRTL() evaluates to false?` | `The container forces \`ltr\`, but line 85 still flips \`flexDirection\`. In LTR mode, this might reverse the buttons (fullscreen on left, play on right).` |
 
-#### B. Error Handling & Fallbacks
-- *"If `fetchUserPreferences` times out (`prefs.ts:112`), does the fallback return cached data or propagate an uncaught rejection?"*
-- *"Are transactional rollback semantics guaranteed if the second insert fails (`ledger.ts:64`)?"*
-
-#### C. Concurrency & Re-entrancy
-- *"Is `mutex.Lock()` acquired before checking `is_active` (`worker.ts:130`), or is there a race window?"*
-- *"Could simultaneous webhook callbacks trigger duplicate ledger records (`hooks.ts:75-82`)?"*
-
-#### D. Backward Compatibility & Migration
-- *"`status` was renamed to `state` (`api.ts:15`). Are older mobile clients still sending `status`?"*
-- *"Does the migration in Layer 1 require lock acquisition on a heavily written table?"*
+### Key Gotcha Categories
+- **Edge cases & boundary traps:** Zero values, empty slices, null handling, division by zero.
+- **State & re-render fan-out:** Broad reactive state selectors that trigger unnecessary renders on idle components.
+- **Layout & styling collisions:** Competing CSS/flex properties (e.g., forced LTR container with inline RTL direction flip).
+- **Concurrency & ordering:** Missing mutexes, non-atomic multi-step operations, lifecycle race conditions.
+- **Persistence & reset surprises:** Values unintentionally reset on track/page switches, or stale cached values.
 
 ---
 
@@ -66,12 +47,11 @@ Radar entries must avoid generic fluff ("is this tested?"). Each is an **open qu
 
 When the reviewer asks an ad-hoc question during standby, investigate without a thumb on the scale.
 
-### 3a. Investigation Checklist (primary agent, or dispatch basis)
-
+### 3a. Investigation Checklist
 1. Restate the question as two competing hypotheses (e.g., "protected against duplicates" vs. "a duplicate path exists").
 2. Read the target code and its real callers — prefer graph tools (`trace_path`, `search_graph`) when available, grep otherwise.
 3. Collect concrete evidence for **both** sides: `file:line` references and actual execution paths.
-4. Report which way the evidence points, with the evidence. If unresolved, say so and name what would resolve it.
+4. Report which way the evidence points, with the evidence. Keep the explanation direct and conversational. If unresolved, say so and name what would resolve it.
 
 ### 3b. Subagent Dispatch Template (when subagents are supported)
 
@@ -81,7 +61,7 @@ When the reviewer asks an ad-hoc question during standby, investigate without a 
 >
 > Evaluate BOTH hypotheses: (1) the code handles this correctly — identify the protections that exist and where they live; (2) the code can fail here — identify concrete edge cases, callers, or execution paths that defeat those protections. Do not try to confirm a predetermined answer. Gather caller traces and report evidence as `file:line` references. End with: evidence summary, which hypothesis the evidence supports, and any remaining uncertainty.
 
-When subagents are unavailable, the primary agent runs the identical investigation itself — the both-hypotheses mandate applies either way.
+When subagents are unavailable, the primary agent runs the identical investigation itself under the same both-hypotheses mandate.
 
 ### 3c. Concern Log Format
 
@@ -91,4 +71,4 @@ Keep a running internal log during standby; it feeds on-demand output only, neve
 - [Layer N / file:line] Concern or open question — status: open | resolved | accepted-risk
 ```
 
-Compile the log into a PR-ready markdown block only on explicit user request.
+Compile the log into a ready-to-post markdown block only on explicit user request.

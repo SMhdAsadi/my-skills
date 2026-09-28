@@ -7,6 +7,17 @@ Each release is tagged `review-walkthrough-v<version>` and published on the [Rel
 
 ---
 
+## [2.1.0] - 2026-09-28
+
+Anti-fatigue and pragmatic redesign to streamline human review speed and eliminate reading exhaustion.
+
+### Changed
+- **Anti-fatigue guide format:** Replaced bloated academic reports with a lean, compact (~40–60 line) review guide. Removed formal disclaimer banners, 40-character commit hash tables, and ASCII box trees.
+- **Conversational tone:** Swapped stiff enterprise jargon (*"Executive Context & Invariant Delta"*, *"Topological Itinerary"*, *"Tier-1 Grounded Blast Radius"*) for natural, everyday spoken developer phrasing.
+- **Language-agnostic adaptation:** The review guide automatically adapts to the user's conversation language (German, Persian, Spanish, etc.) with zero hardcoded language constraints.
+- **Gotchas prioritized up front:** Surfaced 2–4 line-anchored gotchas and edge cases immediately below the 2-sentence summary so reviewers spot traps before diving into the diff.
+- **File-grouped reading order:** Consolidated fragmented per-line checklist bullets into single-file entries with clickable links. Merged skimmable files into a single footer line rather than a separate markdown table.
+
 ## [2.0.0] - 2026-09-13
 
 A ground-up redesign: the skill no longer walks the reviewer through a diff turn by turn in chat. It now generates a one-shot **Architectural Reading Plan** as a markdown artifact, then stays on standby as an on-demand review co-pilot while the human reads real code in their own IDE.
@@ -38,5 +49,6 @@ A ground-up redesign: the skill no longer walks the reviewer through a diff turn
 
 ---
 
+[2.1.0]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.1.0
 [2.0.0]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.0.0
 [1.0.0]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v1.0.0

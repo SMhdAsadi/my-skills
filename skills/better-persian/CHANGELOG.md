@@ -7,6 +7,17 @@ Each release is tagged `better-persian-v<version>` and published on the [Release
 
 ---
 
+## [1.1.0] - 2026-10-04
+
+Refactored and compressed specification for always-on agent context compatibility with zero conversational friction.
+
+### Added
+- **Silent Execution contract:** Enforces zero meta-commentary, forbidding changelogs, edit explanations, preambles, and post-hoc justifications in generated output.
+
+### Changed
+- **Specification compression:** Reduced `SKILL.md` footprint by ~60% (~500 tokens) using dense operational mappings, eliminating expository prose while preserving all linguistic and orthographic rules.
+- **Trigger refinement:** Refined automatic activation description to exempt trivial one-line conversational phrases (e.g. «بله درسته»).
+
 ## [1.0.0] - 2026-10-04
 
 Initial release of the lightweight, production-grade Persian language skill for AI coding agents.

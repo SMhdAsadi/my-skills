@@ -36,8 +36,8 @@ Skills are versioned independently with SemVer. When a skill's behavior changes 
 
 ### `better-persian`
 - **Purpose**: Enforces natural Persian (Farsi) phrasing, register detection, UI microcopy standards, strict orthography (نیم‌فاصله/ZWNJ, Persian glyphs, quotes), and de-AI-ing (stripping robotic bureaucratic clichés).
-- **Activation**: When generating or polishing long-form Persian content, articles, documentation, UI microcopy, proposals, or official letters. Does not add overhead to routine conversational Persian chat.
-- **Contract**: Self-contained, zero-overhead (~900 token) specification. Evaluates deliverables by appropriate register, applies ZWNJ rules and Persian glyphs, handles technical terminology and inline code spacing, and rewrites banned AI tells (`می‌باشد`, `توسط`, ceremonial filler).
+- **Activation**: Activates automatically whenever generating, translating, localizing, or editing Persian text (except short conversational phrases). Operates 100% silently without meta-commentary.
+- **Contract**: Ultra-compact, zero-overhead (~500 token) specification (v1.1.0). Evaluates deliverables by appropriate register, applies ZWNJ rules and Persian glyphs, handles technical terminology and inline code spacing, rewrites banned AI tells (`می‌باشد`, `توسط`, ceremonial filler), and emits only the final deliverable without meta-commentary or preambles.
 
 ### `review-walkthrough`
 - **Purpose**: Anti-fatigue review walkthrough generator and on-demand review co-pilot. Analyzes a branch diff once, writes a compact (~40–60 line), high-signal review walkthrough in everyday spoken developer language (automatically adapting to the user's conversation language) to an ephemeral markdown artifact, then stays on standby to answer reviewer questions while they read the real code in their own IDE.

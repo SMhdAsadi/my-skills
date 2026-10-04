@@ -4,7 +4,7 @@
 [![Vercel Skills CLI](https://img.shields.io/badge/Vercel%20Skills-CLI%20Compatible-000000?style=flat-square&logo=vercel&logoColor=white)](https://github.com/vercel-labs/skills)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](../../LICENSE)
 
-A lightweight, high-signal skill for AI coding agents that enforces natural Persian (Farsi) writing, correct orthography (نیم‌فاصله / ZWNJ), tone-register calibration, UI microcopy standards, and the elimination of robotic AI clichés.
+A lightweight, high-signal skill for AI coding agents that enforces natural Persian (Farsi) writing, correct orthography (نیم‌فاصله / ZWNJ), tone-register calibration, UI microcopy standards, and the elimination of robotic AI clichés — silently with zero meta-commentary.
 
 ---
 
@@ -17,7 +17,7 @@ When generating Persian text, AI models typically suffer from two distinct failu
 
 Most guides attempting to fix this are massive multi-file repositories (~300+ KB) that fill agent context windows and degrade coding performance.
 
-The **`better-persian`** skill distills the essential rules into a compact, zero-overhead specification (~900 tokens) that delivers natural, professional Persian across any agent harness.
+The **`better-persian`** skill (v1.1.0) distills the essential rules into an ultra-compact specification (**~500 tokens**) designed to live in context on non-trivial Persian tasks without degrading reasoning or adding conversational friction.
 
 ---
 
@@ -41,6 +41,16 @@ npx skills add SMhdAsadi/my-skills@better-persian --agent claude-code
 * **Claude Code:** Copy to `~/.claude/skills/better-persian/SKILL.md`
 * **Antigravity / Gemini CLI:** Copy to `~/.gemini/config/skills/better-persian/SKILL.md`
 * **Universal Agents (OpenCode, Codex, Cursor):** Copy to `.agents/skills/better-persian/SKILL.md` or reference in your project's `AGENTS.md`.
+
+---
+
+## Design Principles & Output Contract
+
+### Silent Execution (Zero Meta-Commentary)
+AI agents often clutter responses with post-hoc summaries of what they edited or why. `better-persian` binds the agent to emit **only** the finished Persian deliverable. No preambles, no edit changelogs, no lists of applied orthography rules.
+
+### Automatic Activation with Trivial-Response Filtering
+Activates automatically when writing, editing, localizing, or translating non-trivial Persian text, while intentionally bypassing short conversational turns (e.g. *«بله درسته»*, *«آیا می‌خواهید ادامه دهید؟»*).
 
 ---
 

@@ -13,6 +13,7 @@ A curated collection of production-grade skills for AI coding agents. Adheres st
 | Skill | Category | Description | Primary Triggers |
 | :--- | :--- | :--- | :--- |
 | [`review-walkthrough`](skills/review-walkthrough/) | Code Review / Workflow | Anti-fatigue review walkthrough generator and on-demand review co-pilot. Analyzes a branch diff once, writes a compact (~40–60 line), high-signal review walkthrough in everyday spoken developer language to an ephemeral markdown artifact, then stays on standby for emergent Q&A while the reviewer reads real code in their IDE. | *"walk through changes"*, *"review branch"*, *"guided code review"*, *"review walkthrough for diff"* |
+| [`better-persian`](skills/better-persian/) | Natural Language / Localization | Modern Persian (Farsi) writing and orthography engine. Enforces natural phrasing, detects appropriate registers (formal-but-human, tech/UI, administrative, colloquial, academic), ensures strict orthography (ZWNJ/نیم‌فاصله, Persian glyphs, quotes), and strips robotic AI clichés. | *"better-persian"*, *"write in persian"*, *"persian copywriting"*, *"long-form persian"*, *"متن فارسی"* |
 
 ---
 

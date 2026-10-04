@@ -32,17 +32,18 @@ Skills are versioned independently with SemVer. When a skill's behavior changes 
 | Skill | Trigger Keywords | Pointer |
 | :--- | :--- | :--- |
 | `review-walkthrough` | "walk through changes", "review branch", "guided review", "review walkthrough for diff" | [`skills/review-walkthrough/SKILL.md`](skills/review-walkthrough/SKILL.md) |
-| `review-english` | "review English", "/review-english", "English mistakes in my AI chats", "practice English from my prompts" | [`skills/review-english/SKILL.md`](skills/review-english/SKILL.md) |
+| `better-persian` | "better-persian", "better persian", "write in persian", "persian copy", "long-form persian", "متن فارسی", "نامه اداری" | [`skills/better-persian/SKILL.md`](skills/better-persian/SKILL.md) |
+
+### `better-persian`
+- **Purpose**: Enforces natural Persian (Farsi) phrasing, register detection, UI microcopy standards, strict orthography (نیم‌فاصله/ZWNJ, Persian glyphs, quotes), and de-AI-ing (stripping robotic bureaucratic clichés).
+- **Activation**: When generating or polishing long-form Persian content, articles, documentation, UI microcopy, proposals, or official letters. Does not add overhead to routine conversational Persian chat.
+- **Contract**: Self-contained, zero-overhead (~900 token) specification. Evaluates deliverables by appropriate register, applies ZWNJ rules and Persian glyphs, handles technical terminology and inline code spacing, and rewrites banned AI tells (`می‌باشد`, `توسط`, ceremonial filler).
 
 ### `review-walkthrough`
 - **Purpose**: Anti-fatigue review walkthrough generator and on-demand review co-pilot. Analyzes a branch diff once, writes a compact (~40–60 line), high-signal review walkthrough in everyday spoken developer language (automatically adapting to the user's conversation language) to an ephemeral markdown artifact, then stays on standby to answer reviewer questions while they read the real code in their own IDE.
 - **Activation**: When asked to review changes, walk through a branch, examine a branch diff, or generate a review walkthrough for a PR.
 - **Contract**: One-shot walkthrough generation with split assessment, gotchas prioritized up front, file-grouped reading order, and verification checklist; passive standby afterward — no turn-by-turn gating, no hunk reveals, no unsolicited sign-offs. Emergent questions are investigated under a both-hypotheses mandate; PR-ready review comments are compiled from logged concerns only on explicit request.
 
-### `review-english`
-- **Purpose**: Audits a Persian-speaking developer's everyday English from real AI-assistant chats; renders a local weekly report with top error patterns and Persian mental-model explanations (v0.1.0 "The Report").
-- **Activation**: When asked to review English, walk through English mistakes in AI chats, or generate an English practice report.
-- **Contract**: Deterministic scripts do extraction/redaction/sampling/rendering; the agent does ALL linguistic work via versioned JSON (`extracted_prompts.json` → `analysis.json`). 100% local, no network. See `skills/review-english/PROGRESS.md` for the rollout plan (v0.2 drills+SRS, v0.3 habit loop, v0.4 second adapter).
 
 ## Harness Compatibility Guidelines
 

@@ -174,7 +174,9 @@ The test card's `title` is synthesized as `Verify: keyword1 · keyword2 …`
 ## 3. Editor Links (File References)
 
 ### Rendering
-- Each ref is ONE anchor `<a href="...">` with NO copy button. Its visible text is the file's base name plus lines (`Bar.tsx:35-40`, or `Bar.tsx:35` when there is no `endLine`), with `display:block; direction:ltr; unicode-bidi:isolate; width:fit-content`, aligned to the reading start. The full `path:lines` text goes in the anchor's `title` and `aria-label`.
+- Each file appears exactly once per card. When the prose already mentions the same `file:line`, the renderer shows it there as an inline link and omits the separate footnote below. Only refs with no inline mention get their own footnote link.
+- Footnote links display the file's base name plus lines (`Bar.tsx:35-40`, or `Bar.tsx:35` when there is no `endLine`), with `display:block; direction:ltr; unicode-bidi:isolate; width:fit-content`, aligned to the reading start. The full `path:lines` text goes in the anchor's `title` and `aria-label`. The `href` always uses the full repo-relative path — the label is short, the target never is.
+- The builder resolves basename-only refs to full repo-relative paths via `git ls-files` (single match wins; ambiguous names stay short), and expands `~` in the repo root. Inline basename-only mentions resolve against the same walkthrough-wide map; a mention that matches nothing (or matches several files) renders as plain code, never as a broken link. An unresolvable footnote renders as a non-link `<span>`.
 - When two refs in the same walkthrough share a base name, each shows its parent directory too (`…/topBar/TopBar.tsx:76`) so they stay distinguishable.
 - A small status dot precedes the link only for `added` (green) and `deleted` (red) files; `modified` (the default) shows no dot.
 - Bare `path:line` mentions inside body/summary prose are linkified inline with the same short display text, so prose never needs a parenthesized path mention of its own.

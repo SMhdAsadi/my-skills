@@ -7,6 +7,14 @@ Each release is tagged `review-walkthrough-v<version>` and published on the [Rel
 
 ---
 
+## [2.4.1] - 2026-10-11
+
+### Fixed
+- **Broken editor links:** the builder now expands `~` in the repo root (editors cannot resolve a literal `~` in `file://` URLs) and resolves basename-only refs to full repo-relative paths via `git ls-files` (single match wins; ambiguous names stay short and render as plain spans instead of dead links).
+- **Inline filenames open the real file:** bare `basename:line` mentions in prose resolve against the walkthrough's known paths, so the inline link target is always the full path.
+- **Footnotes gone when inline covers them:** a ref already linked inline in the same card no longer gets a duplicate footnote below. Each file appears exactly once per card — inline when mentioned, footnote otherwise.
+- **Full paths shortened, not deleted:** parenthesized `(src/a/Bar.tsx:35):` mentions become `(Bar.tsx:35):` in the prose, which renders as the inline link.
+
 ## [2.4.0] - 2026-10-11
 
 ### Changed
@@ -116,6 +124,7 @@ A ground-up redesign: the skill no longer walks the reviewer through a diff turn
 
 ---
 
+[2.4.1]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.4.1
 [2.4.0]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.4.0
 [2.3.0]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.3.0
 [2.2.0]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.2.0

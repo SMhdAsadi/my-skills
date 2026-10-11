@@ -16,6 +16,7 @@ The markdown is the single source of truth. Exit non-zero on invalid data.
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -55,14 +56,12 @@ SKIM_RE = re.compile(
     r"(?:[Ss]kim|بررسی گذرا|Überfliegen|Vistazo rápido)\s*:?\s*(.+)"
 )
 
-# A parenthesized file:line mention, e.g. "(src/foo/Bar.tsx:35)" or
-# "(src/foo/Bar.tsx:35-40):". These live in the structured refs block,
-# so they are stripped from prose to avoid showing the same path twice.
-PAREN_REF_RE = re.compile(
-    r"\(\s*[A-Za-z0-9_@][A-Za-z0-9_@\-/+.]*\.[A-Za-z0-9]+:\d+(?:-\d+)?\s*\)\s*:?"
-)
-LEADING_REF_RE = re.compile(
-    r"^\(\s*[A-Za-z0-9_@][A-Za-z0-9_@\-/+.]*\.[A-Za-z0-9]+:\d+(?:-\d+)?\s*\)\s*:?\s*"
+# A parenthesized full-path file:line mention, e.g.
+# "(src/foo/Bar.tsx:35-40):". Long paths are shortened to basename form so
+# the renderer shows them inline as short links ("(Bar.tsx:35):") and omits
+# the duplicate footnote. Basename-only mentions pass through untouched.
+FULL_PAREN_REF_RE = re.compile(
+    r"\(\s*[A-Za-z0-9_@][A-Za-z0-9_@\-/+.]*\/[^()]*\.[A-Za-z0-9]+:\d+(?:-\d+)?\s*\)\s*:?"
 )
 
 SCOPE_TITLES = {
@@ -177,13 +176,28 @@ def parse_refs(text):
 
 
 def strip_body(text):
-    """Remove file:line mentions from prose.
+    """Shorten parenthesized full-path mentions to basename form.
 
-    The structured refs block below each card already links the full path,
-    so a parenthesized "(path:line)" in the prose would show it twice.
+    `([src/a/Bar.tsx:35](#))` arrives here as `(src/a/Bar.tsx:35):` (after
+    link cleanup) and becomes `(Bar.tsx:35):`, which the renderer linkifies
+    inline — so no separate footnote is needed for it.
     """
-    text = LEADING_REF_RE.sub("", text)
-    text = PAREN_REF_RE.sub(" ", text)
+
+    def short(m):
+        inner = REF_RE.search(m.group(0))
+        if not inner:
+            return m.group(0)
+        base = inner.group("path").rsplit("/", 1)[-1]
+        loc = base + ":" + inner.group("start")
+        if inner.group("end"):
+            loc += "-" + inner.group("end")
+        return "(" + loc + "):"
+
+    text = FULL_PAREN_REF_RE.sub(short, text)
+    # Collapse an immediately duplicated mention: "(A:1): (A:1): body" → "(A:1): body".
+    text = re.sub(
+        r"(\([^()]+:\d+(?:-\d+)?\)\s*:?)\s*\1", r"\1", text
+    )
     return re.sub(r"\s{2,}", " ", text).strip(" :")
 
 
@@ -260,7 +274,33 @@ def test_title_for(items, lang):
     return title
 
 
-def parse_markdown(md, args, lang):
+def tracked_by_basename(root):
+    """Map basename -> [repo-relative paths] from `git ls-files`.
+
+    Used to resolve basename-only refs (e.g. `Bar.tsx:35`) to their full
+    repo-relative path so editor links open the real file. Returns {} when
+    the root is unknown or not a git checkout.
+    """
+    if not root:
+        return {}
+    try:
+        out = subprocess.run(
+            ["git", "-C", root, "ls-files"],
+            capture_output=True, text=True, timeout=30,
+        )
+    except Exception:
+        return {}
+    if out.returncode != 0:
+        return {}
+    m = {}
+    for line in out.stdout.splitlines():
+        line = line.strip()
+        if line:
+            m.setdefault(line.rsplit("/", 1)[-1], []).append(line)
+    return m
+
+
+def parse_markdown(md, args, lang, root):
     lines = md.splitlines()
     title = next((l[2:].strip() for l in lines if l.startswith("# ")), "Review")
     title = clean_inline(re.sub(r"^[^:]*:\s*", "", title)) or clean_inline(
@@ -302,6 +342,16 @@ def parse_markdown(md, args, lang):
     if not gist:
         fail("gist section is empty")
 
+    # Resolve basename-only refs against the working tree so every stored
+    # path is repo-relative and every editor link opens the real file.
+    by_base = tracked_by_basename(root)
+
+    def resolve(path):
+        if "/" in path:
+            return path
+        cands = by_base.get(path, [])
+        return cands[0] if len(cands) == 1 else path
+
     taken = {"scope", "reading-order", "what-to-test"}
     steps = [
         {
@@ -332,6 +382,8 @@ def parse_markdown(md, args, lang):
         refs = parse_refs(b)
         if not refs:
             fail(f"gotcha without a verifiable file:line ref: {b[:80]}")
+        for r in refs:
+            r["path"] = resolve(r["path"])
         title_b = re.sub(r"^\*\*(.+?)\*\*.*", r"\1", b)
         title_b = clean_inline(title_b)[:TITLE_MAX]
         body = strip_body(clean_inline(re.sub(r"^\*\*.+?\*\*\s*", "", b)))
@@ -356,6 +408,7 @@ def parse_markdown(md, args, lang):
         if not refs:
             continue
         r = refs[0]
+        r["path"] = resolve(r["path"])
         role_m = re.match(r"\*\*(.+?)\*\*", b)
         role = clean_inline(role_m.group(1)) if role_m else r["path"]
         summary = strip_body(
@@ -456,8 +509,10 @@ def main():
     lang = args.lang or detect_lang(md)
     head = args.head or git("rev-parse", "--short", "HEAD") or "HEAD"
     repo_root = args.repo_root or git("rev-parse", "--show-toplevel")
+    # Never store a literal `~`: editors cannot resolve it in file URLs.
+    repo_root = os.path.abspath(os.path.expanduser(repo_root)) if repo_root else ""
 
-    title, steps, (nfiles, nadded, nremoved) = parse_markdown(md, args, lang)
+    title, steps, (nfiles, nadded, nremoved) = parse_markdown(md, args, lang, repo_root)
     data = {
         "schemaVersion": 1,
         "lang": lang,

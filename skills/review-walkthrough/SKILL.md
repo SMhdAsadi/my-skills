@@ -5,7 +5,7 @@ license: MIT
 compatibility: "git >= 2.0"
 metadata:
   author: SMhd
-  version: "2.4.0"
+  version: "2.4.1"
   tags:
     - git
     - code-review
@@ -151,7 +151,7 @@ When the gate says build, do it with the script — never by hand:
 2. **Do not read the full spec.** The cheat-sheet below is enough for the common case. Open [`references/html-walkthrough.md`](references/html-walkthrough.md) only for Sections 2–3 (data contract, editor links) when something is unclear; the content-shaping rules live in `references/review-rubric.md` (Section 4).
 3. **Run the builder:** `python3 scripts/build-html.py <walkthrough.md> --out <walkthrough.html> --branch <b> --base <base> [--lang <code>]`. It parses the finished markdown, fills `repo.root` from `git rev-parse --show-toplevel`, validates the JSON contract, and injects only the `<script type="application/json" id="walkthrough-data">` block. Pass `--editor cursor|windsurf|...` only when the user named one (default `vscode`).
 4. **Single check:** the script exits non-zero on invalid data. If it fails, fix the markdown (counts/anchors) and re-run once. If it still fails, ship markdown only and say why in one line. No light/dark opens, no font proofs, no editor-link click-throughs, no "checks I could not run" lists.
-5. **Cheat-sheet (the whole contract you need):** steps order is `scope`, `split`?, `gotcha` × 2–4, `reading`, `test`; every gotcha needs 1–3 `refs` with `path` + `startLine`; titles ≤160 chars; branch/paths stay Latin verbatim. Never write a `file:line` path in the prose itself — the `([file:line](#))` anchor carries it once, and the HTML shows each file once as a short `basename:line` link.
+5. **Cheat-sheet (the whole contract you need):** steps order is `scope`, `split`?, `gotcha` × 2–4, `reading`, `test`; every gotcha needs 1–3 `refs` with `path` + `startLine`; titles ≤160 chars; branch/paths stay Latin verbatim. Write each `file:line` anchor once in the standard position — the HTML shows it inline as a short `basename:line` link (full path in the href) and drops the duplicate footnote. The builder resolves basename-only refs via `git ls-files` and expands `~` in the repo root.
 
 Fail safe: a missing template or a second script failure means markdown-only. Never ship a half-built file.
 

@@ -103,12 +103,14 @@ const P={next:'M9 6l6 6-6 6',prev:'M15 6l-6 6 6 6',open:'M14 4h6v6M20 4l-9 9M18 
 const h=(t,a,...k)=>{const e=document.createElement(t);for(const x in a||{}){const v=a[x];if(v==null||v===false)continue;if(x==='class')e.className=v;else if(x==='text')e.textContent=v;else e.setAttribute(x,v===true?'':v)}for(const c of k.flat(9))if(c!=null&&c!==false)e.append(c);return e};
 const icon=(n,cls)=>{const s=document.createElementNS(NS,'svg');for(const[k,v]of Object.entries({viewBox:'0 0 24 24',width:n==='open'?14:18,height:n==='open'?14:18,fill:'none',stroke:'currentColor','stroke-width':2,'stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true',class:cls||''}))s.setAttribute(k,v);const p=document.createElementNS(NS,'path');p.setAttribute('d',P[n]);s.append(p);return s};
 const root=document.documentElement,app=document.getElementById('app');
-let D,L='en',R=false,S=I.en,CB={};
+let D,L='en',R=false,S=I.en,CB={},PM={},LINKED=[];
 const setLang=l=>{L=typeof l==='string'&&l?l:'en';const b=L.split('-')[0].toLowerCase();R=/^(fa|ar|he|ur|ps|ku|yi|dv)$/.test(b);root.lang=L;root.dir=R?'rtl':'ltr';S=Object.assign({},I.en,I[b]||{},(D&&D.ui)||{});S.cat=Object.assign({},I.en.cat,(I[b]||{}).cat,((D&&D.ui)||{}).cat)};
 const f=n=>L.toLowerCase().startsWith('fa')?n.toLocaleString('fa-IR',{useGrouping:false}):String(n);
 const LAT=/([A-Za-z][A-Za-z0-9_\-]*(?:[./][A-Za-z0-9_\-]+)*)/;
 const RERE=/([A-Za-z0-9_@][A-Za-z0-9_@\-/+.]*\.[A-Za-z0-9]+:\d+(?:-\d+)?)/;
-function linkify(t){const o=[];String(t).split(RERE).forEach((p,i)=>{if(!p)return;if(i%2){const m=p.match(/^(.+):(\d+)(?:-(\d+))?$/);const r={path:m[1],startLine:+m[2]};if(m[3]&&+m[3]!==+m[2])r.endLine=+m[3];const u=url(r);o.push(u?h('a',{class:'rl-in',href:u,title:S.open+': '+p,'aria-label':S.open+': '+p},shortLoc(r)):h('code',{dir:'ltr',text:shortLoc(r)}))}else if(R)p.split(LAT).forEach((q,j)=>{if(q)o.push(j%2?h('bdi',{text:q}):q)});else o.push(p)});return o}
+const rkey=r=>r.path+':'+r.startLine+'-'+(r.endLine||r.startLine);
+function resolveMatch(p){const m=p.match(/^(.+):(\d+)(?:-(\d+))?$/);if(!m)return null;let path=m[1];if(path.indexOf('/')<0){if(PM[path])path=PM[path];else return null}const r={path:path,startLine:+m[2]};if(m[3]&&+m[3]!==+m[2])r.endLine=+m[3];return r}
+function linkify(t){const o=[];String(t).split(RERE).forEach((p,i)=>{if(!p)return;if(i%2){const r=resolveMatch(p);if(!r){o.push(h('code',{dir:'ltr',text:p}));return}LINKED.push(rkey(r));const u=url(r);o.push(u?h('a',{class:'rl-in',href:u,title:S.open+': '+p,'aria-label':S.open+': '+p},shortLoc(r)):h('code',{dir:'ltr',text:shortLoc(r)}))}else if(R)p.split(LAT).forEach((q,j)=>{if(q)o.push(j%2?h('bdi',{text:q}):q)});else o.push(p)});return o}
 function rich(s){const o=[];String(s).split(/(`[^`]+`|\*\*[^*]+\*\*)/).forEach(p=>{if(!p)return;if(p[0]==='`'&&p.length>2)o.push(h('code',{dir:'ltr',text:p.slice(1,-1)}));else if(p.startsWith('**')&&p.length>4)o.push(h('strong',null,rich(p.slice(2,-2))));else o.push(linkify(p))});return o}
 const SAFE=p=>typeof p==='string'&&p&&!/^(\.\/|\/)/.test(p)&&!/[\\\u0000-\u001f]/.test(p)&&!p.split('/').some(x=>x===''||x==='..');
 function pref(o,w){if(!o||!SAFE(o.path))throw Error(w+'.path');if(!Number.isInteger(o.startLine)||o.startLine<1)throw Error(w+'.startLine');if(o.endLine!=null&&(!Number.isInteger(o.endLine)||o.endLine<o.startLine))throw Error(w+'.endLine');if(o.status!=null&&!['modified','added','deleted'].includes(o.status))throw Error(w+'.status')}
@@ -140,7 +142,7 @@ function url(r){const o=D.repo||{};if(!o.root||r.status==='deleted')return null;
  const e=o.editor||'vscode',pre=o.remote?e+'://vscode-remote/'+o.remote:e+'://file';
  return pre+(b.startsWith('/')?'':'/')+enc(b)+'/'+enc(r.path)+':'+r.startLine}
 function shortLoc(r){const range=r.endLine&&r.endLine!==r.startLine?'-'+r.endLine:'';const segs=r.path.split('/');const b=segs[segs.length-1];if((CB[b]||0)>1&&segs.length>1)return '…/'+segs[segs.length-2]+'/'+b+':'+r.startLine+range;return b+':'+r.startLine+range}
-function ref(r){const t=loc(r),d=shortLoc(r),u=url(r);
+function ref(r){const t=loc(r),d=shortLoc(r),known=r.path.indexOf('/')>=0||PM[r.path],u=known?url(r):null;
  const dot=r.status==='added'?h('span',{class:'std add',title:'added'}):r.status==='deleted'?h('span',{class:'std del',title:'deleted'}):null;
  const a=u?h('a',{class:'rl',href:u,title:S.open+': '+t,'aria-label':S.open+': '+t},d,icon('open')):h('span',{class:'rl',title:t},d);
  return h('div',{class:'ref'},dot,a,r.status==='deleted'?h('span',{class:'mut',text:S.deleted}):null)}
@@ -150,11 +152,11 @@ const T=x=>h('h2',null,rich(x.title));
 const B={
 scope:x=>[x.scopeLabel&&h('p',{class:'lab',text:x.scopeLabel}),T(x),h('section',{class:'blk'},h('h3',{text:S.gist}),x.gist.map(p=>P1(p))),h('p',null,h('strong',{text:S.affects+': '}),rich(x.affects))],
 split:x=>[T(x),co(S.split,x.recommendation,'warn'),x.boundaries&&h('ul',{class:'pl'},x.boundaries.map(b=>h('li',null,rich(b))))],
-gotcha:(x,n,t)=>[h('p',{class:'lab'},h('span',{class:'dot'}),S.heads+' '+f(n)+' '+S.of+' '+f(t)+' · '+(S.cat[x.category]||x.category)),T(x),P1(x.body),x.refs.map(ref),(x.extra||[]).map(p=>P1(p,'mut')),x.lookFor&&co(S.check,x.lookFor)],
+gotcha:(x,n,t)=>{LINKED=[];const b=P1(x.body);const e=(x.extra||[]).map(p=>P1(p,'mut'));const lf=x.lookFor&&co(S.check,x.lookFor);const rs=x.refs.filter(r=>LINKED.indexOf(rkey(r))<0).map(ref);return[h('p',{class:'lab'},h('span',{class:'dot'}),S.heads+' '+f(n)+' '+S.of+' '+f(t)+' · '+(S.cat[x.category]||x.category)),T(x),b,rs,e,lf]},
 reading:x=>{const key='review-walkthrough:'+D.meta.headSha;let sv=[];try{sv=JSON.parse(localStorage.getItem(key))||[]}catch(e){}
  const ul=h('ul',{class:'chk'},x.items.map((it,i)=>{const cb=h('input',{type:'checkbox',id:'c'+i});cb.checked=sv.includes(i);
   cb.onchange=()=>{const a=[...ul.querySelectorAll('input')].flatMap((c,j)=>c.checked?[j]:[]);try{localStorage.setItem(key,JSON.stringify(a))}catch(e){}};
-  return h('li',null,cb,h('div',null,h('label',{for:'c'+i},h('strong',null,rich(it.role))),P1(it.summary),ref(it)))}));
+  return h('li',null,cb,h('div',null,h('label',{for:'c'+i},h('strong',null,rich(it.role))),LINKED=[],P1(it.summary),LINKED.indexOf(rkey(it))<0?[ref(it)]:[]))}));
  return[T(x),ul,x.skim&&x.skim.length?h('p',{class:'mut'},S.skim+': ',x.skim.flatMap((p,i)=>[i?(R?'، ':', '):null,h('code',{dir:'ltr',text:p})])):null]},
 test:x=>[T(x),h('ul',{class:'pl'},x.items.map(t=>h('li',null,rich(t))))]};
 function themeCtl(){let cur=null;try{cur=localStorage.getItem('rw-theme')}catch(e){}
@@ -165,7 +167,7 @@ function themeCtl(){let cur=null;try{cur=localStorage.getItem('rw-theme')}catch(
    v==='system'?delete root.dataset.theme:root.dataset.theme=v;g.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)))};g.append(b)});return g}
 function fail(msg){setLang(D&&D.lang);app.replaceChildren(h('main',null,h('section',{class:'card'},h('h2',{text:S.invalid}),h('p',null,h('code',{dir:'ltr',text:String(msg)})))))}
 function build(){
- const m=D.meta,st=D.steps,tot=st.length,gt=st.filter(x=>x.kind==='gotcha').length;let gn=0;document.title=m.title;CB={};st.forEach(x=>{(x.refs||[]).concat(x.items||[]).forEach(r=>{if(r&&r.path){const b=r.path.split('/').pop();CB[b]=(CB[b]||0)+1}})});
+ const m=D.meta,st=D.steps,tot=st.length,gt=st.filter(x=>x.kind==='gotcha').length;let gn=0;document.title=m.title;CB={};st.forEach(x=>{(x.refs||[]).concat(x.items||[]).forEach(r=>{if(r&&r.path){const b=r.path.split('/').pop();CB[b]=(CB[b]||0)+1}})});PM={};const seen={};st.forEach(x=>{(x.refs||[]).concat(x.items||[]).forEach(r=>{if(r&&r.path){const b=r.path.split('/').pop();if(!(b in PM)){PM[b]=r.path;seen[b]=1}else if(PM[b]!==r.path)seen[b]=2}})});Object.keys(seen).forEach(b=>{if(seen[b]>1)delete PM[b]});
  const status=h('p',{class:'status','aria-live':'polite'});
  const prog=h('ol',{class:'prog','aria-label':S.nav},st.map((x,i)=>h('li',null,h('button',{type:'button','aria-label':f(i+1)+'. '+x.title}))));
  const cards=st.map(x=>{const c=h('section',{class:'card',id:'s-'+x.id,hidden:true},B[x.kind](x,++gn,gt));if(x.kind!=='gotcha')gn--;if(x.kind==='gotcha'){}return c});

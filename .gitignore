@@ -26,3 +26,10 @@ pnpm-debug.log*
 *.tmp
 *.temp
 scratch/
+.scratch/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/

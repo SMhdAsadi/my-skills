@@ -7,6 +7,17 @@ Each release is tagged `review-walkthrough-v<version>` and published on the [Rel
 
 ---
 
+## [2.3.0] - 2026-10-11
+
+### Changed
+- **HTML fast-path:** small diffs (≤5 files and ≤200 changed lines) are now markdown-only by default. The HTML companion builds automatically only for larger diffs, or whenever the user explicitly asks for it.
+- **Scripted HTML build:** new `scripts/build-html.py` parses the finished markdown into the template's JSON block and validates the contract. Agents never open the ~90 KB template in context and never hand-write JSON — one script call replaces the read/copy/escape/validate loop.
+- **Verification checklist removed:** the light/dark screenshot pass, font proof, and editor-link click-throughs are gone (they cost minutes and were always skipped in practice). The only check is the builder's exit code: JSON parses and step order/counts match the markdown.
+- **Slimmer mandatory reads:** markdown-only runs never open the HTML spec. HTML runs need only its Sections 2–3 (data contract, editor links); the template's standby investigation template lives in the rubric and is read only during Q&A.
+- **Bounded investigation:** small diffs use `git diff` plus at most ~3 targeted file reads with no graph-tool calls. Graph tools are reserved for larger or architecturally unclear diffs, capped at ~3 calls. Split assessment is one sentence unless the diff is massive.
+- **Storage order flipped for openability:** repo gitignored temp dir first (preferred home for HTML, opened manually in a browser), harness artifact dir second and only when the artifact type renders there (markdown previews inline, HTML does not), system temp last. Markdown and HTML may live in different directories — each goes where it opens fastest.
+- **Chat briefing** drops the "checks I could not run" line; the HTML line now only says where it is or why it was skipped.
+
 ## [2.2.0] - 2026-10-11
 
 ### Added
@@ -89,6 +100,7 @@ A ground-up redesign: the skill no longer walks the reviewer through a diff turn
 
 ---
 
+[2.3.0]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.3.0
 [2.2.0]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.2.0
 [2.1.3]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.1.3
 [2.1.2]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.1.2

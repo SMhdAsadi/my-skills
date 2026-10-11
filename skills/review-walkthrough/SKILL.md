@@ -1,11 +1,11 @@
 ---
 name: review-walkthrough
-description: "Generates an anti-fatigue review walkthrough for a branch diff (a lean markdown file plus a card-based HTML companion with clickable editor links), then stays on standby as an on-demand review co-pilot. Use when the user wants to walk through changes, review a branch, examine a diff, or asks for a guided code review."
+description: "Generates an anti-fatigue review walkthrough for a branch diff (a lean markdown file, plus a card-based HTML companion with clickable editor links for larger diffs), then stays on standby as an on-demand review co-pilot. Use when the user wants to walk through changes, review a branch, examine a diff, or asks for a guided code review."
 license: MIT
 compatibility: "git >= 2.0"
 metadata:
   author: SMhd
-  version: "2.2.0"
+  version: "2.3.0"
   tags:
     - git
     - code-review
@@ -18,7 +18,7 @@ metadata:
 
 An **Anti-Fatigue Review Walkthrough Generator and On-Demand Review Co-Pilot** designed to help developers review code better and faster in their native IDE.
 
-Instead of dumping a wall of formal academic text or gating the review behind turn-by-turn chat steps, this skill analyzes the branch diff once, writes a lean, high-signal, engaging **review walkthrough** to an ephemeral markdown artifact (plus a card-based HTML companion of the same content), and then stands by: the human reviews at their own pace in their IDE or diff viewer, and asks the agent questions only when they hit ambiguities, tricky logic, or suspected bugs. Consult [`references/review-rubric.md`](references/review-rubric.md) for layering heuristics, risk-hypothesis formulas, investigation templates, and HTML content-shaping rules. Consult [`references/html-walkthrough.md`](references/html-walkthrough.md) for the full HTML companion spec (design, wording, RTL, data contract, editor links).
+Instead of dumping a wall of formal academic text or gating the review behind turn-by-turn chat steps, this skill analyzes the branch diff once, writes a lean, high-signal, engaging **review walkthrough** to an ephemeral markdown artifact (plus a card-based HTML companion of the same content for larger diffs — small diffs stay markdown-only unless HTML is requested), and then stands by: the human reviews at their own pace in their IDE or diff viewer, and asks the agent questions only when they hit ambiguities, tricky logic, or suspected bugs. Consult [`references/review-rubric.md`](references/review-rubric.md) for layering heuristics, risk-hypothesis formulas, investigation templates, and HTML content-shaping rules. Consult [`references/html-walkthrough.md`](references/html-walkthrough.md) for the full HTML companion spec (design, wording, RTL, data contract, editor links).
 
 ---
 
@@ -37,19 +37,14 @@ Instead of dumping a wall of formal academic text or gating the review behind tu
    git diff <base>...HEAD --stat
    ```
 4. Check that the diff is non-empty. If empty or invalid, report this immediately.
-5. Gauge diff size (files changed, lines changed). This drives the split assessment (Section 2) and the walkthrough's scale (Section 4).
-6. Read the changed files and hunk details to understand the core mechanisms before generating the walkthrough.
+5. Gauge diff size (files changed, lines changed). This drives the split assessment (Section 2), the walkthrough's scale (Section 4), and the HTML fast-path (Section 4d): **small diffs (≤5 files and ≤200 changed lines) are markdown-only by default** — skip the HTML companion unless the user asks for it. Larger diffs get HTML by default unless the user says markdown only.
+6. Read only what the diff warrants. Default to `git diff <base>...HEAD` (plus `--stat`) and at most ~3 targeted file reads for context. Do not open every changed file cover to cover on small diffs.
 
 ---
 
 ### 2. Split Assessment (Root Cause First)
 
-Large diffs are the primary driver of review fatigue and missed defects. If the diff exceeds the large-diff threshold (rule of thumb: >15 files or >800 changed lines):
-
-- Open the walkthrough with an explicit **Split Recommendation**: state that splitting the change into smaller, independently reviewable units is the superior fix, and suggest a concrete split boundary when one is visible (e.g., schema migration first, then domain logic, then consumers).
-- Still generate the full walkthrough — reviewers frequently inherit diffs they cannot split (AI-authored branches, legacy changes, external PRs).
-
-For typical-sized diffs, omit this section entirely.
+Large diffs are the primary driver of review fatigue and missed defects. If the diff exceeds the large-diff threshold (rule of thumb: >15 files or >800 changed lines): state in one sentence that splitting is the superior fix plus one concrete split boundary when visible, then still generate the full walkthrough. For all other diffs, omit this section entirely — no assessment paragraph, no preamble.
 
 ---
 
@@ -57,8 +52,8 @@ For typical-sized diffs, omit this section entirely.
 
 Remain portable across harnesses while exploiting graph-based code intelligence when present.
 
-- **Tier 1 (Graph-Powered):** If structural/graph MCP tools (e.g., `search_graph`, `trace_path`, `query_graph`, `get_architecture`) or LSP symbol tools are available:
-  - Use them to map dependency layers (separating domain contracts from consumer leaves) and trace inbound callers of changed symbols for a grounded blast radius.
+- **Small diffs (≤5 files and ≤200 lines):** skip graph tools entirely. `git diff` plus file reads are enough.
+- **Tier 1 (Graph-Powered):** only for larger or architecturally unclear diffs, and capped at ~3 calls: use `search_graph` / `trace_path` to map dependency layers and trace inbound callers of changed symbols for a grounded blast radius.
 - **Tier 2 (Syntactic Fallback):** If graph tools are unavailable:
   - Degrade gracefully to git commands (`git diff --stat`, `git log`), directory-path heuristics, grep, and file reading.
   - Label any blast-radius or dependency claim as heuristic, or omit it. Never present Tier-2 speculation with Tier-1 confidence.
@@ -68,17 +63,17 @@ Remain portable across harnesses while exploiting graph-based code intelligence 
 
 ### 4. Generate the Review Walkthrough
 
-Write the complete walkthrough as a single markdown artifact. **One shot** — do not page it through chat. Then generate the HTML companion (Section 4d) from that finished markdown.
+Write the complete walkthrough as a single markdown artifact. **One shot** — do not page it through chat. Then decide on the HTML companion via the fast-path rule (Section 4d): small diffs stop at markdown unless the user asked for HTML.
 
 #### 4a. Resolve the Storage Path (Ephemeral, Never Git-Tracked)
 
-The walkthrough is a disposable draft. It must never be committed and never live in `.git/`. Resolve the path using this fallback hierarchy:
+The walkthrough is a disposable draft. It must never be committed and never live in `.git/`. Resolve the path using this fallback hierarchy (first match wins):
 
-1. **Agent harness storage (first priority):** the harness's dedicated artifact/scratch directory, if the environment provides one.
-2. **Repository temp directory:** a local scratch directory (e.g., `tmp/`, `.tmp/`), but only after verifying with `git check-ignore` that it is excluded from tracking.
+1. **Repository temp directory (first priority):** a local scratch directory (e.g., `tmp/`, `.tmp/`), after verifying with `git check-ignore` that it is excluded from tracking. This is the preferred home for the **HTML companion**, which most harnesses cannot render inline — the user opens it from the repo in a browser.
+2. **Harness artifact directory — when directly openable:** the harness's dedicated artifact/scratch directory, but only when the artifact type renders there. In practice: **markdown** goes here when the harness previews markdown inline (e.g., Antigravity); **HTML** does not, since it needs a real browser open.
 3. **System temp directory (final fallback):** e.g., `/tmp/review-walkthrough-<branch>-<timestamp>.md` on Unix.
 
-The HTML companion lives in the same directory with the same basename and a `.html` extension. Report the resolved absolute path(s) to the user so they can open them directly.
+Markdown and HTML may live in different directories: put each where it opens fastest. Report both absolute paths so each opens with one click (or one copy-paste into the browser for HTML).
 
 #### 4b. Tone & Style Guidelines (Anti-Fatigue)
 
@@ -142,31 +137,23 @@ Render all section titles and labels in the active conversation language (see re
 
 **Do not include:** paged diff hunks, lint/formatting nits, generic checklist questions ("is this secure?"), or pass/fail approval badges.
 
-#### 4d. Generate the HTML Companion
+#### 4d. HTML Companion (Fast-Path, Script-Built)
 
-After the markdown is written, generate a self-contained, card-based **HTML companion**: one card per step, light/dark theme following the OS, full RTL support, and every `file:line` reference opening the user's editor (VS Code by default).
+**Gate first, build second.** Generate the HTML companion only when it is worth it:
 
-Generate it by default. Skip it only when the user asks for markdown only or says they don't want HTML.
+- **Small diffs (≤5 files and ≤200 lines): markdown only.** Skip the HTML silently unless the user explicitly asked for it. Say so in one briefing line.
+- **Larger diffs:** generate the HTML by default. Skip it only when the user asks for markdown only.
+- Either way: the markdown is the single source of truth — same gotchas, same files, same order, same `file:line` anchors. Never add or drop a claim.
 
-1. **Read the spec first.** Read [`references/html-walkthrough.md`](references/html-walkthrough.md) in full before generating anything. It is authoritative for design tokens, wording and register, fonts, RTL rules, the JSON data contract, editor links, and verification. Do not work from memory.
-2. **The markdown is the single source of truth.** Build the HTML data from the finished markdown walkthrough: same gotchas, same files, same order, same `file:line` anchors. Never add a claim the markdown does not make, and never drop one. Wording may be re-expressed in the HTML's register; facts may not change. Apply the content-shaping rules in `references/review-rubric.md` (Section 4).
-3. **Map sections to steps:**
+When the gate says build, do it with the script — never by hand:
 
-   | Markdown section | HTML step (`kind`) |
-   | :--- | :--- |
-   | Header & Quick Scope + The Gist | `scope` (always first) |
-   | Split Recommendation | `split` (only when the markdown has one) |
-   | Each Heads Up bullet | one `gotcha` step each |
-   | Suggested Reading Order + Skim line | one `reading` step |
-   | What to Test | one `test` step |
+1. **Do not read the template.** Never open `assets/walkthrough-template.html` in the agent context (it is ~90 KB). The builder reads it from disk itself — just point `--out` at the resolved HTML path.
+2. **Do not read the full spec.** The cheat-sheet below is enough for the common case. Open [`references/html-walkthrough.md`](references/html-walkthrough.md) only for Sections 2–3 (data contract, editor links) when something is unclear; the content-shaping rules live in `references/review-rubric.md` (Section 4).
+3. **Run the builder:** `python3 scripts/build-html.py <walkthrough.md> --out <walkthrough.html> --branch <b> --base <base> [--lang <code>]`. It parses the finished markdown, fills `repo.root` from `git rev-parse --show-toplevel`, validates the JSON contract, and injects only the `<script type="application/json" id="walkthrough-data">` block. Pass `--editor cursor|windsurf|...` only when the user named one (default `vscode`).
+4. **Single check:** the script exits non-zero on invalid data. If it fails, fix the markdown (counts/anchors) and re-run once. If it still fails, ship markdown only and say why in one line. No light/dark opens, no font proofs, no editor-link click-throughs, no "checks I could not run" lists.
+5. **Cheat-sheet (the whole contract you need):** steps order is `scope`, `split`?, `gotcha` × 2–4, `reading`, `test`; every gotcha needs 1–3 `refs` with `path` + `startLine`; titles ≤120 chars; branch/paths stay Latin verbatim.
 
-4. **Fill `repo`.** Run `git rev-parse --show-toplevel` in the reviewed checkout (use the worktree path if the review ran in a git worktree) for `repo.root`. Never guess it; omit it if git cannot provide it. Default `repo.editor` to `vscode` unless the user named another editor.
-5. **Write only the data.** Copy `assets/walkthrough-template.html` from this skill folder and replace only the contents of the `<script type="application/json" id="walkthrough-data">` block (the template ships with an empty `{}`). Never edit the template's markup, CSS, JS, or embedded fonts. If the template is missing, skip the HTML and say so in the briefing.
-6. **Validate before writing.** Check the JSON against the validation rules in the spec. Write the file to the same directory and basename as the markdown, with `.html`.
-7. **Verify what you can.** Run the verification checklist in the spec as far as the environment allows. List the checks you could not run in the chat briefing instead of claiming them.
-8. **Fail safe.** If the HTML cannot be produced correctly (validation fails, or the template is missing), do not ship a half-built or fallback-font file. The markdown remains the deliverable; say in the briefing that the HTML was skipped and why.
-
-The HTML uses the same language as the markdown (the first prompt's language) and declares it in the JSON `lang` field. The template has built-in UI strings for English and Persian and sets direction and font automatically; for any other language, supply a complete `ui` object (see the spec's "Other languages" section).
+Fail safe: a missing template or a second script failure means markdown-only. Never ship a half-built file.
 
 ---
 
@@ -174,11 +161,10 @@ The HTML uses the same language as the markdown (the first prompt's language) an
 
 After writing the walkthrough, reply concisely in the walkthrough language (3–6 lines max):
 
-- The absolute path to the review walkthrough artifact, and to the HTML companion when one was generated (or one line saying it was skipped and why).
+- The absolute path to the review walkthrough artifact, and to the HTML companion when one was generated (or one line saying it was skipped and why — e.g., small diff, or markdown-only request).
 - A 1-line recap of the branch and diff size.
 - The split recommendation, if one was issued.
 - The top 2 gotchas from the walkthrough in one line each.
-- Any HTML verification checks that could not be run.
 
 Then stop. Do not walk through steps, do not ask the user to type `next`.
 
@@ -193,8 +179,7 @@ The human drives pacing. The agent answers questions and otherwise stays out of 
 - **Answering technical questions** (e.g., *"In Layer 2, does `processOrder` handle concurrent duplicate requests?"*):
   - Investigate neutrally: read the target code, trace real execution paths and callers, and evaluate **both hypotheses** — what protections exist *and* what edge cases could defeat them.
   - Never set out to "confirm" the user's suspicion; never set out to dismiss it either. Report concrete evidence (`file:line`, caller traces) and state plainly which way the evidence points.
-  - **Delegation (when subagents are supported):** for questions needing broad multi-file investigation, the primary agent may orchestrate an ephemeral research subagent. The dispatch prompt must carry sufficient context (branch diff location, target symbols, line ranges) while remaining strictly neutral — instruct the subagent to evaluate both hypotheses and gather execution paths, never to confirm a specific bug. Synthesize the subagent's findings into a direct, concise answer.
-  - **Fallback (no subagent support):** the primary agent performs the same investigation itself under the identical both-hypotheses rule.
+  - For broad multi-file questions, dispatch one neutral research subagent per the template in `references/review-rubric.md` (Section 3b); without subagent support, run the same investigation directly.
 
 ---
 

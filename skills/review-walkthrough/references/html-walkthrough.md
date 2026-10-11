@@ -9,10 +9,10 @@ Authoritative spec for the HTML companion that `review-walkthrough` generates ne
 ## 1. Output Contract
 
 - One self-contained `.html` file: inline CSS and JS, no external requests, no CDN, no remote fonts.
-- The content is a JSON data block at the top of the file. The template (markup, CSS, JS, embedded fonts) is static and is never rewritten per run. The skill only fills in the JSON.
+- The content is a JSON data block at the top of the file. The template (markup, CSS, JS, embedded fonts) is static and is never rewritten per run. `scripts/build-html.py` fills in the JSON from the finished markdown; agents never hand-write it and never open the template in model context.
 - Language is the language of the user's first prompt, the same as the markdown, and is declared once in the JSON `lang` field. The template sets `<html lang>` and `dir` from it (RTL for fa, ar, he, ur, ps, ku, yi, dv). All layout uses logical properties, so flipping `dir` still works.
 - Without JavaScript the template shows a bilingual (English and Persian) `<noscript>` note pointing to the markdown file next to it (same basename, `.md`).
-- The template ships as `assets/walkthrough-template.html` with the Vazirmatn subset already embedded and an empty `{}` data block. Agents copy it and replace only the contents of the JSON block; they never edit markup, CSS, JS, or fonts. It validates the data (Section 2) and shows an error card instead of a half-built walkthrough. The spec below documents what the template implements and is the reference for changing it.
+- The template ships as `assets/walkthrough-template.html` with the Vazirmatn subset already embedded and an empty `{}` data block. The builder script copies it and replaces only the contents of the JSON block; markup, CSS, JS, and fonts are never touched per run. It validates the data (Section 2) and shows an error card instead of a half-built walkthrough. The spec below documents what the template implements and is the reference for changing it.
 
 ---
 
@@ -340,13 +340,9 @@ No more than 2 font weights, no emoji, no pill badges, no shadows beyond a 1px b
 
 ---
 
-## 11. Verification (run what the environment allows; report what it doesn't)
+## 11. Verification (one check, no browser pass)
 
-- JSON parses and passes every validation rule in Section 2 before the file is written.
-- Open in light and dark OS modes and with each manual override; the card, callouts, code, `<kbd>`, checkboxes, and progress bar are legible in all of them.
-- Persian: Next's arrow points left and Previous's points right; ArrowLeft advances; every path, flag, and branch name reads left to right with punctuation in place; Persian digits in prose and Latin digits in code; the font renders as Vazirmatn with no network access; nothing scrolls sideways at 375px width.
-- A sample editor link resolves to the expected `vscode://file/...:line` URL.
-- Counts of gotchas, reading items, and test items equal the markdown walkthrough's.
+- `scripts/build-html.py` exits 0: the JSON parses, step order/counts match the markdown (`scope` first, `test` last, `reading` after the last `gotcha`), and every gotcha carries at least one `file:line` ref. That is the entire verification — there is deliberately no light/dark screenshot pass, no font proof, and no editor-link click-through. Those checks cost minutes on every run and were always skipped in practice.
 
 ---
 

@@ -92,7 +92,7 @@ The HTML companion is a second view of the finished markdown walkthrough, not a 
 
 ### 4b. Card Budget (anti-fatigue for the HTML)
 - Every card must read without scrolling on a phone-sized viewport (about 375×667) at normal text size.
-- Step title: one sentence, at most 160 characters, synthesized by the builder (scope = diff shape, reading = `Read in order: role1 → role2 …`, test = `Verify: keyword1 · keyword2 …`). Never copy the first item verbatim as the title.
+- Step title: one sentence, at most 160 characters, synthesized by the builder (scope = diff shape, reading = `Read in order: role1 → role2 …`, test = generic count-based line). Never copy item text into a title.
 - Gotcha body: 1 to 2 sentences, full text, never truncated. `lookFor`: at most 1 sentence. `extra`: at most 1 short paragraph, only for a real edge case.
 - Write each `file:line` anchor once, in the standard `([file:line](#))` position right after the bold role/title. The renderer shows it inline as a short `basename:line` link and omits the duplicate footnote. Never repeat the same path elsewhere in the prose.
 - Gotchas: 2–4 (same as the markdown). If the markdown has more than 4, the markdown is the problem; fix it there first.

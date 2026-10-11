@@ -107,8 +107,8 @@ The reading card's `title` is synthesized as `Read in order: role1 → role2 …
 ```
 "items": array of 2 to 3 one-line strings, full text, identifiers and commands in `backticks`
 ```
-The test card's `title` is synthesized as `Verify: keyword1 · keyword2 …`
-(or the localized equivalent), never a copy of the first item.
+The test card's `title` is a generic count-based line (e.g. "Run these 3 checks on a device.",
+or the localized equivalent) — never words copied from the items.
 
 ### Ordering and limits
 - Order: `scope`, `split`?, `gotcha` × 2–4, `reading`, `test`.

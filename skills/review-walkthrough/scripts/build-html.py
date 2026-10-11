@@ -93,10 +93,10 @@ READING_PREFIX = {
 }
 
 VERIFY_PREFIX = {
-    "en": "Verify",
-    "fa": "بررسی",
-    "de": "Prüfen",
-    "es": "Verificar",
+    "en": "Run these {n} checks on a device.",
+    "fa": "این {n} مورد را روی دستگاه بررسی کنید.",
+    "de": "Diese {n} Prüfungen auf einem Gerät durchführen.",
+    "es": "Ejecutar estas {n} comprobaciones en un dispositivo.",
 }
 
 
@@ -259,19 +259,8 @@ def reading_title_for(roles, lang):
 
 def test_title_for(items, lang):
     lang = base_lang(lang)
-    prefix = VERIFY_PREFIX.get(lang, VERIFY_PREFIX["en"])
-    keywords = []
-    for t in items:
-        plain = clean_inline(t).replace("`", "")
-        words = plain.split()[:5]
-        kw = " ".join(words).rstrip("،,.:؛")
-        if kw:
-            keywords.append(kw)
-    joined = " · ".join(keywords)
-    title = f"{prefix}: {joined}" if joined else prefix
-    if len(title) > TITLE_MAX:
-        title = title[: TITLE_MAX - 1].rstrip() + "…"
-    return title
+    template = VERIFY_PREFIX.get(lang, VERIFY_PREFIX["en"])
+    return template.format(n=len(items))[:TITLE_MAX]
 
 
 def tracked_by_basename(root):

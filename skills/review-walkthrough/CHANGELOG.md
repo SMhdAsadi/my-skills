@@ -7,6 +7,11 @@ Each release is tagged `review-walkthrough-v<version>` and published on the [Rel
 
 ---
 
+## [2.4.2] - 2026-10-11
+
+### Changed
+- **Generic test card title:** the test step now uses a short count-based line ("Run these 3 checks on a device.", localized) instead of keyword extraction, which echoed the items and wrapped like a truncated fourth bullet.
+
 ## [2.4.1] - 2026-10-11
 
 ### Fixed
@@ -124,6 +129,7 @@ A ground-up redesign: the skill no longer walks the reviewer through a diff turn
 
 ---
 
+[2.4.2]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.4.2
 [2.4.1]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.4.1
 [2.4.0]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.4.0
 [2.3.0]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.3.0

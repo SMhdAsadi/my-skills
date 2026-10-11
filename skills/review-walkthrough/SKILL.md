@@ -5,7 +5,7 @@ license: MIT
 compatibility: "git >= 2.0"
 metadata:
   author: SMhd
-  version: "2.4.1"
+  version: "2.4.2"
   tags:
     - git
     - code-review

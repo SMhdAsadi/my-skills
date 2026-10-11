@@ -7,6 +7,22 @@ Each release is tagged `review-walkthrough-v<version>` and published on the [Rel
 
 ---
 
+## [2.4.0] - 2026-10-11
+
+### Changed
+- **One Light / One Dark Pro theme:** the HTML companion now follows the One editor palettes — One Light in light mode, One Dark Pro in dark mode — with green (`--add`) / red (`--del`) diff stats and yellow (`--warn`) gotcha markers.
+- **Two-line header:** source/target branches render as separate tags on their own line; file counts and green `+added` / red `−removed` stats move to a second line.
+- **Short file links:** refs display as `basename:line` (full path in the tooltip), with automatic `…/parent/basename` disambiguation when two files share a name. The copy-path button is gone — links need no backup.
+- **No more truncation:** the builder keeps full body/summary/test text; title cap raised 120 → 160 chars and cards grow instead of cutting mid-word.
+- **Synthesized card titles:** scope shows the diff shape (small/medium/large), reading shows `Read in order: role1 → role2 …`, tests show `Verify: keyword1 · keyword2 …` — no card repeats its first item anymore.
+- **Quieter chrome:** icon-only System/Light/Dark toggle (monitor/sun/moon), single-chevron Previous/Next with no `<kbd>` duplicates, auto-height cards, 24px progress touch targets, footer shows only the markdown basename.
+- **Status dots:** `added`/`deleted` refs get a small green/red dot; inline `path:line` mentions in prose are linkified instead of repeated as raw text.
+
+### Fixed
+- **Prose path duplication:** parenthesized `(path:line)` mentions (including markdown-link form) are stripped from card prose since the structured ref below already links them.
+- **Affects misparsing:** the builder now matches the localized Affects label instead of grabbing the first bold line (which was the scope bar).
+- **Skim detection:** Persian (`بررسی گذرا`), German, and Spanish skim labels are recognized again.
+
 ## [2.3.0] - 2026-10-11
 
 ### Changed
@@ -100,6 +116,7 @@ A ground-up redesign: the skill no longer walks the reviewer through a diff turn
 
 ---
 
+[2.4.0]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.4.0
 [2.3.0]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.3.0
 [2.2.0]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.2.0
 [2.1.3]: https://github.com/SMhdAsadi/my-skills/releases/tag/review-walkthrough-v2.1.3

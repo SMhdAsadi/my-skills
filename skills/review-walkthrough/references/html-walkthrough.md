@@ -55,7 +55,8 @@ Numbers are plain numbers. The renderer converts them to local digits (Persian d
 "id":      unique kebab-case slug, used for deep links (#step-id)
 "kind":    "scope" | "split" | "gotcha" | "reading" | "test"
 "section": short label shown beside «گام ۲ از ۷» (no numbers in it)
-"title":   one sentence, at most 120 characters
+"title":   one sentence, at most 160 characters, synthesized by the builder
+           (never a verbatim copy of the first item — see Section 8)
 ```
 Step numbers, «نکتهٔ ۱ از ۳» counters, and progress are computed by the renderer. Never store them in the JSON.
 
@@ -65,7 +66,7 @@ Step numbers, «نکتهٔ ۱ از ۳» counters, and progress are computed by t
 "gist":       array of 1 to 3 short strings (the Gist sentences)
 "affects":    one-line string (the Affects line)
 ```
-`title` states the shape of the diff in one sentence (for example "small, self-contained, safe to read in one pass").
+`title` states the shape of the diff in one sentence (for example "small, self-contained, safe to read in one pass"). The builder synthesizes it from the diff size (small / medium / large), never by copying the first gist sentence.
 
 ### `split` (at most one, directly after `scope`; only when the markdown has a Split Recommendation)
 ```
@@ -76,7 +77,8 @@ Step numbers, «نکتهٔ ۱ از ۳» counters, and progress are computed by t
 ### `gotcha` (2 to 4, in markdown order; the template accepts 1 to 4)
 ```
 "category": "edge-case" | "state" | "layout" | "concurrency" | "persistence" | "other"
-"body":     1 to 2 sentences, identifiers in `backticks`
+"body":     full prose (1 to 2 sentences, identifiers in `backticks`); never truncated.
+            Never contains a parenthesized file:line mention — refs below carry the links.
 "refs":     array, 1 to 3 items (required: the anchoring rule), each:
             { "path": repo-relative, forward slashes, no leading "./" or "/", no "..",
               "startLine": int >= 1,
@@ -90,19 +92,23 @@ A gotcha without `body` or without at least one ref is invalid. No severity, fix
 ### `reading` (exactly one)
 ```
 "items": array, in foundation-to-leaf order, each:
-         { "role":      short noun phrase,
-           "path":      repo-relative path (same rules as refs),
-           "startLine": int >= 1,
-           "endLine":   optional int >= startLine,
-           "summary":   one sentence,
-           "status":    optional "modified" | "added" | "deleted" }
+          { "role":      short noun phrase,
+            "path":      repo-relative path (same rules as refs),
+            "startLine": int >= 1,
+            "endLine":   optional int >= startLine,
+            "summary":   full summary sentence, never truncated,
+            "status":    optional "modified" | "added" | "deleted" }
 "skim":  optional array of bare repo-relative paths
 ```
+The reading card's `title` is synthesized as `Read in order: role1 → role2 …`
+(or the localized equivalent), never a copy of the first item.
 
 ### `test` (exactly one, always last)
 ```
-"items": array of 2 to 3 one-line strings, identifiers and commands in `backticks`
+"items": array of 2 to 3 one-line strings, full text, identifiers and commands in `backticks`
 ```
+The test card's `title` is synthesized as `Verify: keyword1 · keyword2 …`
+(or the localized equivalent), never a copy of the first item.
 
 ### Ordering and limits
 - Order: `scope`, `split`?, `gotcha` × 2–4, `reading`, `test`.
@@ -168,8 +174,10 @@ A gotcha without `body` or without at least one ref is invalid. No severity, fix
 ## 3. Editor Links (File References)
 
 ### Rendering
-- Each ref is ONE anchor `<a href="...">` whose visible text is `path:start-end` (or `path:start` when there is no `endLine`), with `display:block; direction:ltr; unicode-bidi:isolate; width:fit-content`, aligned to the reading start.
-- A separate small icon button next to it copies the `path:lines` text (aria-label «کپی مسیر», then «کپی شد» for 1.5 s).
+- Each ref is ONE anchor `<a href="...">` with NO copy button. Its visible text is the file's base name plus lines (`Bar.tsx:35-40`, or `Bar.tsx:35` when there is no `endLine`), with `display:block; direction:ltr; unicode-bidi:isolate; width:fit-content`, aligned to the reading start. The full `path:lines` text goes in the anchor's `title` and `aria-label`.
+- When two refs in the same walkthrough share a base name, each shows its parent directory too (`…/topBar/TopBar.tsx:76`) so they stay distinguishable.
+- A small status dot precedes the link only for `added` (green) and `deleted` (red) files; `modified` (the default) shows no dot.
+- Bare `path:line` mentions inside body/summary prose are linkified inline with the same short display text, so prose never needs a parenthesized path mention of its own.
 - Link style: `--accent` color, underline on hover and focus, standard focus ring. No pill, no box, no emoji. A small "open" SVG icon follows the text.
 - `title` and `aria-label` on the anchor: «باز کردن در ویرایشگر».
 - Use a plain anchor. No `window.open`, no JS navigation, no `target="_blank"`. It must work from a `file://` page.
@@ -185,8 +193,8 @@ A gotcha without `body` or without at least one ref is invalid. No severity, fix
 - Schemes: `vscode`, `vscode-insiders`, `cursor`, `windsurf`, `vscodium`. An unknown editor value is a validation error. Paths containing `..` or control characters are a validation error.
 
 ### Fallbacks
-- If `repo.root` is missing, or the ref's `status` is `deleted`, render the same text as a non-link `<span>` with the copy button, plus a muted label «حذف‌شده» for deleted files.
-- The footer always shows one muted line: line numbers refer to commit `headSha`, and links open the current working tree (Persian: «شمارهٔ خط‌ها به کامیت `headSha` اشاره می‌کنند و فایل‌ها از working tree فعلی باز می‌شوند.»), plus the markdown path when `meta.markdownPath` is set.
+- If `repo.root` is missing, or the ref's `status` is `deleted`, render the same short text as a non-link `<span>` with a muted label «حذف‌شده» for deleted files.
+- The footer always shows one muted line: line numbers refer to commit `headSha`, and links open the current working tree (Persian: «شمارهٔ خط‌ها به کامیت `headSha` اشاره می‌کنند و فایل‌ها از working tree فعلی باز می‌شوند.»), plus the markdown file's base name (full absolute path in the tooltip) when `meta.markdownPath` is set.
 
 ### Known limits (mention to the user when relevant)
 - The first click on a `vscode://` link makes the browser ask for confirmation; the user can allow it permanently.
@@ -234,7 +242,6 @@ These rules apply to the HTML text. The markdown walkthrough keeps its own spoke
 | Previous / Next | قبلی / بعدی |
 | Theme: System / Light / Dark | خودکار / روشن / تیره |
 | Open in editor | باز کردن در ویرایشگر |
-| Copy path / Copied | کپی مسیر / کپی شد |
 | Deleted | حذف‌شده |
 | Invalid data | داده‌های راهنما نامعتبر است |
 
@@ -267,7 +274,7 @@ Already embedded in the shipped template (weights 400 and 600, about 70 KB of ba
 - Never use text arrows (← →) in labels. Use inline SVG chevrons.
 - A chevron follows reading direction: Next points toward inline-end (LEFT in RTL), Previous toward inline-start (RIGHT in RTL). Draw icons for LTR and add `[dir="rtl"] .dir-icon { transform: scaleX(-1); }`.
 - The icon sits after the text in Next and before the text in Previous.
-- Keyboard: in RTL, ArrowLeft goes to the NEXT step and ArrowRight to the PREVIOUS step (reversed in LTR). Home goes to the first step, End to the last. The `<kbd>` hints must match.
+- Keyboard: in RTL, ArrowLeft goes to the NEXT step and ArrowRight to the PREVIOUS step (reversed in LTR). Home goes to the first step, End to the last.
 
 ### Bidi (mixed Persian and Latin)
 - Every Latin run (identifier, path, flag, branch, hash, version, code) is wrapped by the renderer in `<bdi>` or `<code dir="ltr">` with `unicode-bidi: isolate`, so punctuation never scrambles.
@@ -284,27 +291,30 @@ Already embedded in the shipped template (weights 400 and 600, about 70 KB of ba
 
 ## 7. Color & Theming
 
-- Default: follow the OS via `prefers-color-scheme`, no flash of the wrong theme. A three-state control in the top corner: System / Light / Dark (خودکار / روشن / تیره), with System selected by default. A manual choice overrides the OS and is saved in `localStorage` (wrap reads and writes in try/catch, fall back to System).
+- Default: follow the OS via `prefers-color-scheme`, no flash of the wrong theme. A three-state icon control in the top corner (System / Light / Dark as monitor / sun / moon icons with tooltips: خودکار / روشن / تیره), with System selected by default. A manual choice overrides the OS and is saved in `localStorage` (wrap reads and writes in try/catch, fall back to System).
 - Define light tokens on `:root`. Define dark tokens twice: once in `@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {...} }` and once in `:root[data-theme="dark"] {...}`. A tiny inline script in `<head>` sets `data-theme` before first paint. Set `color-scheme` per theme. The System option tracks OS changes without a reload.
 - Every color is a CSS variable. No hex values outside the token block.
+- Light theme follows One Light; dark theme follows One Dark Pro.
 
 Tokens (names are fixed; values may move ±5% lightness, never hue):
 
-| Token | Light | Dark | Use |
+| Token | Light (One Light) | Dark (One Dark Pro) | Use |
 | :--- | :--- | :--- | :--- |
-| `--bg` | #fafafa | #0b0b0d | page background |
-| `--surface` | #ffffff | #141416 | the card |
-| `--border` | #e4e4e7 | #27272a | 1px borders and dividers |
-| `--text` | #18181b | #fafafa | titles and body |
-| `--text-2` | #52525b | #a1a1aa | secondary prose |
-| `--text-muted` | #71717a | #8b8b94 | labels, hints |
-| `--accent` | #2563eb | #60a5fa | buttons, focus, progress, links, checkboxes |
-| `--accent-contrast` | #ffffff | #0b0b0d | text on a solid accent button |
-| `--warn` | #b45309 | #fbbf24 | gotcha marker dot, split callout border |
-| `--code-bg` | #f4f4f5 | #1c1c1f | inline code |
+| `--bg` | #fafafa | #282c34 | page background |
+| `--surface` | #ffffff | #2c313c | the card |
+| `--border` | #e4e4e7 | #3e4451 | 1px borders and dividers |
+| `--text` | #383a42 | #dcdfe4 | titles and body |
+| `--text-2` | #696c77 | #abb2bf | secondary prose |
+| `--text-muted` | #6e7177 | #939cb0 | labels, hints |
+| `--accent` | #4078f2 | #61afef | buttons, focus, progress, links, checkboxes |
+| `--accent-contrast` | #ffffff | #282c34 | text on a solid accent button |
+| `--warn` | #c18401 | #e5c07b | gotcha marker dot, split callout border |
+| `--code-bg` | #f0f0f1 | #21252b | inline code, branch tags |
+| `--add` | #50a14f | #98c379 | added-lines stats |
+| `--del` | #e45649 | #e06c75 | removed-lines stats |
 
-- Accent is for interactive state only. `--warn` is used only for the gotcha marker and the split callout. Text colors must pass WCAG AA (4.5:1) on `--surface` in BOTH themes.
-- No gradients, glows, colored backgrounds, or neon. Dark is neutral near-black, not navy or purple. No box-shadows beyond 1px borders.
+- Diff stats render as one LTR isolate: `+N` in `--add`, `−N` in `--del`. Accent is for interactive state only. `--warn` is used only for the gotcha marker and the split callout. Text colors must pass WCAG AA (4.5:1) on `--surface` in BOTH themes.
+- No gradients, glows, colored page backgrounds, or neon. No box-shadows beyond 1px borders.
 - Focus ring: 2px `--accent` with 2px offset, visible on both surfaces.
 
 ---
@@ -314,14 +324,14 @@ Tokens (names are fixed; values may move ±5% lightness, never hue):
 - Single centered column, max-width about 760px. One card = one step.
 - ONE level of container: the card. No nested boxes. Separate sections with spacing and thin dividers.
 - Callouts (`lookFor`, split recommendation): a 3px inline-start border plus a small bold label, no filled background. `lookFor` uses a muted border; the split callout uses `--warn`.
-- The card has a fixed min-height; the nav buttons sit in a sticky footer area. Nothing jumps between steps and there is no dead space below.
+- The card uses auto height with a small min-height (~180px); the nav buttons sit in a sticky footer area. Nothing jumps between steps.
 - Only the `scope` step may be centered. Everything else aligns to the reading start.
-- Page header: `meta.title`, then one muted line with `branch → base`, the stats isolate, and «گام ۲ از ۷» with the current `section`.
+- Page header: `meta.title`, then a branch line with each branch as a tag (`from-tag → to-tag`), then a stats line (`N files · +added (green) / −removed (red)`), then «گام ۲ از ۷» with the current `section`.
 - Gotcha card, top to bottom: quiet category label with a `--warn` dot and counter («نکتهٔ ۱ از ۳ · حالت مرزی»), title, body, file references, optional `extra`, optional «بررسی کنید» callout.
 - Reading step: a native `<input type="checkbox">` list, one item per file (role in weight 600, summary, then the editor link). Checked state is saved per `headSha` in `localStorage` (try/catch, key `review-walkthrough:<headSha>`). The `skim` line follows the list as plain muted text.
-- Progress: a thin segmented bar (one segment per step), filling from inline-start. No dot row.
-- Buttons: Previous is ghost, Next is solid `--accent`, same height, SVG chevrons as in Section 6, `<kbd>` hints shown.
-- Inline code: monospace with a subtle `--code-bg` tint, no border. No pill chips anywhere.
+- Progress: a thin segmented bar (one segment per step) with a 24px touch target per segment, filling from inline-start. No dot row.
+- Buttons: Previous is ghost, Next is solid `--accent`, same height, one SVG chevron each as in Section 6. No `<kbd>` hints — arrow keys still work and are documented in the button tooltip.
+- Inline code: monospace with a subtle `--code-bg` tint, no border. Branch names use the same tag style. No other pill chips anywhere.
 - Deep links: `#step-id` selects a step; handle `hashchange`.
 - Print: force the light tokens, show all steps in sequence, hide navigation and the theme control.
 
@@ -336,7 +346,7 @@ Tokens (names are fixed; values may move ±5% lightness, never hue):
 
 ## 10. Don't
 
-No more than 2 font weights, no emoji, no pill badges, no shadows beyond a 1px border, no fixed pixel widths, no hardcoded left/right, no text arrows, no uppercase or letter-spacing, no code snippets or diff hunks, no severity labels.
+No more than 2 font weights, no emoji, no pill badges except the branch tags, no shadows beyond a 1px border, no fixed pixel widths, no hardcoded left/right, no text arrows, no uppercase or letter-spacing, no code snippets or diff hunks, no severity labels.
 
 ---
 
@@ -350,7 +360,7 @@ No more than 2 font weights, no emoji, no pill badges, no shadows beyond a 1px b
 
 The template has built-in UI strings for English (`en`) and Persian (`fa`). Direction, digits (Persian digits only for `fa`), and the font follow `lang`.
 
-- **Any other language** (German, Spanish, Arabic, ...): set `lang` and provide a complete `ui` object in the JSON. Missing keys fall back to English, so omit none. Translate idiomatically using the headings and labels in the SKILL.md reference table, with no bilingual tagging. Keys: `step, of, scope, branch, split, gist, affects, heads, check, reading, skim, test, text, prev, next, theme, sys, light, dark, open, copy, copied, deleted, invalid, files, foot, nav` and `cat` (an object with `edge-case, state, layout, concurrency, persistence, other`). `foot` must contain `{sha}`, and `heads` is the word before the counter («Heads up 1 of 3»).
+- **Any other language** (German, Spanish, Arabic, ...): set `lang` and provide a complete `ui` object in the JSON. Missing keys fall back to English, so omit none. Translate idiomatically using the headings and labels in the SKILL.md reference table, with no bilingual tagging. Keys: `step, of, scope, branch, split, gist, affects, heads, check, reading, skim, test, text, prev, next, theme, sys, light, dark, open, deleted, invalid, files, foot, nav` and `cat` (an object with `edge-case, state, layout, concurrency, persistence, other`). `foot` must contain `{sha}`, and `heads` is the word before the counter («Heads up 1 of 3»). (`copy` / `copied` keys are legacy and ignored — there is no copy button.)
 - **LTR languages** use a system sans stack, a right-pointing chevron for Next, and ArrowRight advances.
 - **Other RTL languages** (Arabic, Hebrew, ...) get Sections 6 to 9 unchanged. Arabic uses the embedded Vazirmatn; Hebrew and others fall back to the system stack.
 - The register rules in Section 4 are Persian-specific; for other languages use a neutral, professional tone.

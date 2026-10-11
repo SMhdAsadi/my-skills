@@ -24,6 +24,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 DEFAULT_TEMPLATE = HERE.parent / "assets" / "walkthrough-template.html"
 
+TITLE_MAX = 160
+
 REF_RE = re.compile(
     r"(?P<path>[A-Za-z0-9_@][A-Za-z0-9_@\-/+.]*\.[A-Za-z0-9]+)"
     r":(?P<start>\d+)(?:-(?P<end>\d+))?"
@@ -44,6 +46,59 @@ CATEGORY_HINTS = [
     ({"race", "mutex", "concurr", "order", "همزمانی"}, "concurrency"),
     ({"persist", "reset", "cache", "stale", "ماندگاری"}, "persistence"),
 ]
+
+AFFECTS_RE = re.compile(
+    r"\*\*\s*(?:Affects|بخش‌های تحت‌تأثیر|Betrifft|Afecta)\s*:?\s*\*\*\s*(.+)"
+)
+
+SKIM_RE = re.compile(
+    r"(?:[Ss]kim|بررسی گذرا|Überfliegen|Vistazo rápido)\s*:?\s*(.+)"
+)
+
+# A parenthesized file:line mention, e.g. "(src/foo/Bar.tsx:35)" or
+# "(src/foo/Bar.tsx:35-40):". These live in the structured refs block,
+# so they are stripped from prose to avoid showing the same path twice.
+PAREN_REF_RE = re.compile(
+    r"\(\s*[A-Za-z0-9_@][A-Za-z0-9_@\-/+.]*\.[A-Za-z0-9]+:\d+(?:-\d+)?\s*\)\s*:?"
+)
+LEADING_REF_RE = re.compile(
+    r"^\(\s*[A-Za-z0-9_@][A-Za-z0-9_@\-/+.]*\.[A-Za-z0-9]+:\d+(?:-\d+)?\s*\)\s*:?\s*"
+)
+
+SCOPE_TITLES = {
+    "small": {
+        "en": "Small, self-contained change — read in one pass.",
+        "fa": "تغییر کوچک و یکپارچه — در یک نگاه بخوانید.",
+        "de": "Kleine, überschaubare Änderung — in einem Durchgang lesen.",
+        "es": "Cambio pequeño y autocontenido — leer de una pasada.",
+    },
+    "medium": {
+        "en": "Medium change — follow the reading order below.",
+        "fa": "تغییر متوسط — ترتیب بررسی زیر را دنبال کنید.",
+        "de": "Mittlere Änderung — der Lesereihenfolge unten folgen.",
+        "es": "Cambio mediano — seguir el orden de lectura.",
+    },
+    "large": {
+        "en": "Large change — check the split boundary first.",
+        "fa": "تغییر بزرگ — ابتدا مرز تفکیک را بررسی کنید.",
+        "de": "Große Änderung — zuerst die Aufteilungsgrenze prüfen.",
+        "es": "Cambio grande — revisar primero el límite de división.",
+    },
+}
+
+READING_PREFIX = {
+    "en": "Read in order",
+    "fa": "ترتیب بررسی",
+    "de": "Lesereihenfolge",
+    "es": "Orden de lectura",
+}
+
+VERIFY_PREFIX = {
+    "en": "Verify",
+    "fa": "بررسی",
+    "de": "Prüfen",
+    "es": "Verificar",
+}
 
 
 def fail(msg):
@@ -69,6 +124,10 @@ def detect_lang(text):
     if "Guía de Revisión" in text or "Lectura Sugerido" in text:
         return "es"
     return "en"
+
+
+def base_lang(lang):
+    return (lang or "en").split("-")[0].lower()
 
 
 def slugify(text, taken):
@@ -117,9 +176,15 @@ def parse_refs(text):
     return uniq[:3]
 
 
-def strip_refs_suffix(text):
-    """Remove the trailing (file:line) link part of a bullet for body text."""
-    return re.sub(r"\s*\([^()]*[\w]+\.\w+:\d+[^()]*\)\s*:?\s*", " ", text).strip(" :")
+def strip_body(text):
+    """Remove file:line mentions from prose.
+
+    The structured refs block below each card already links the full path,
+    so a parenthesized "(path:line)" in the prose would show it twice.
+    """
+    text = LEADING_REF_RE.sub("", text)
+    text = PAREN_REF_RE.sub(" ", text)
+    return re.sub(r"\s{2,}", " ", text).strip(" :")
 
 
 def split_sections(md):
@@ -155,7 +220,47 @@ def guess_category(title, body):
     return "other"
 
 
-def parse_markdown(md, args):
+def scope_title_for(files, added, removed, lang):
+    total = added + removed
+    bucket = "medium"
+    if files <= 5 and total <= 200:
+        bucket = "small"
+    elif files > 15 or total > 800:
+        bucket = "large"
+    lang = base_lang(lang)
+    if lang not in SCOPE_TITLES[bucket]:
+        lang = "en"
+    return SCOPE_TITLES[bucket][lang]
+
+
+def reading_title_for(roles, lang):
+    lang = base_lang(lang)
+    prefix = READING_PREFIX.get(lang, READING_PREFIX["en"])
+    joined = " → ".join(roles)
+    title = f"{prefix}: {joined}" if joined else prefix
+    if len(title) > TITLE_MAX:
+        title = title[: TITLE_MAX - 1].rstrip() + "…"
+    return title
+
+
+def test_title_for(items, lang):
+    lang = base_lang(lang)
+    prefix = VERIFY_PREFIX.get(lang, VERIFY_PREFIX["en"])
+    keywords = []
+    for t in items:
+        plain = clean_inline(t).replace("`", "")
+        words = plain.split()[:5]
+        kw = " ".join(words).rstrip("،,.:؛")
+        if kw:
+            keywords.append(kw)
+    joined = " · ".join(keywords)
+    title = f"{prefix}: {joined}" if joined else prefix
+    if len(title) > TITLE_MAX:
+        title = title[: TITLE_MAX - 1].rstrip() + "…"
+    return title
+
+
+def parse_markdown(md, args, lang):
     lines = md.splitlines()
     title = next((l[2:].strip() for l in lines if l.startswith("# ")), "Review")
     title = clean_inline(re.sub(r"^[^:]*:\s*", "", title)) or clean_inline(
@@ -186,7 +291,7 @@ def parse_markdown(md, args):
     files = args.files if args.files is not None else int(m.group(1)) if m else 0
     added = args.added if args.added is not None else int(m.group(2)) if m else 0
     removed = args.removed if args.removed is not None else int(m.group(3)) if m else 0
-    am = re.search(r"\*\*.+?:\*\*\s*(.+)", md)
+    am = AFFECTS_RE.search(md)
     affects = clean_inline(am.group(1)) if am else ""
 
     gist = [
@@ -203,9 +308,9 @@ def parse_markdown(md, args):
             "id": "scope",
             "kind": "scope",
             "section": clean_inline(gist_head)[:40] or "Scope",
-            "title": clean_inline(gist[0])[:120],
+            "title": scope_title_for(files, added, removed, lang)[:TITLE_MAX],
             "gist": gist,
-            "affects": affects or clean_inline(gist[-1])[:160],
+            "affects": affects or gist[-1],
         }
     ]
     if split_rec:
@@ -215,8 +320,8 @@ def parse_markdown(md, args):
                 "id": "split",
                 "kind": "split",
                 "section": clean_inline(h3[0][0])[:40] or "Split",
-                "title": rec_lines[0][:120] if rec_lines else "Consider splitting.",
-                "recommendation": " ".join(rec_lines)[:400] or "Consider splitting.",
+                "title": (rec_lines[0][:TITLE_MAX] if rec_lines else "Consider splitting."),
+                "recommendation": " ".join(rec_lines) or "Consider splitting.",
             }
         )
 
@@ -228,8 +333,8 @@ def parse_markdown(md, args):
         if not refs:
             fail(f"gotcha without a verifiable file:line ref: {b[:80]}")
         title_b = re.sub(r"^\*\*(.+?)\*\*.*", r"\1", b)
-        title_b = clean_inline(title_b)[:120]
-        body = clean_inline(strip_refs_suffix(re.sub(r"^\*\*.+?\*\*\s*", "", b)))
+        title_b = clean_inline(title_b)[:TITLE_MAX]
+        body = strip_body(clean_inline(re.sub(r"^\*\*.+?\*\*\s*", "", b)))
         steps.append(
             {
                 "id": slugify(title_b, taken),
@@ -237,7 +342,7 @@ def parse_markdown(md, args):
                 "section": clean_inline(gotcha_head)[:40] or "Gotcha",
                 "title": title_b,
                 "category": guess_category(title_b, body),
-                "body": body[:300] or title_b,
+                "body": body or title_b,
                 "refs": refs,
             }
         )
@@ -253,21 +358,21 @@ def parse_markdown(md, args):
         r = refs[0]
         role_m = re.match(r"\*\*(.+?)\*\*", b)
         role = clean_inline(role_m.group(1)) if role_m else r["path"]
-        summary = clean_inline(
-            strip_refs_suffix(re.sub(r"^\*\*.+?\*\*\s*", "", b))
+        summary = strip_body(
+            clean_inline(re.sub(r"^\*\*.+?\*\*\s*", "", b))
         ) or role
         items.append(
             {
-                "role": role[:60],
+                "role": role[:80],
                 "path": r["path"],
                 "startLine": r["startLine"],
                 **({"endLine": r["endLine"]} if "endLine" in r else {}),
-                "summary": summary[:160],
+                "summary": summary,
             }
         )
     if not items:
         fail("no reading-order item has a file:line ref")
-    skim_m = re.search(r"[Ss]kim\s*:?\s*(.+)", reading_sec)
+    skim_m = SKIM_RE.search(reading_sec)
     skim = []
     if skim_m:
         skim = [
@@ -278,7 +383,7 @@ def parse_markdown(md, args):
             "id": "reading-order",
             "kind": "reading",
             "section": clean_inline(reading_head)[:40] or "Reading",
-            "title": clean_inline(reading[0])[:120],
+            "title": reading_title_for([i["role"] for i in items], lang),
             "items": items,
             **({"skim": skim} if skim else {}),
         }
@@ -287,13 +392,14 @@ def parse_markdown(md, args):
     tests = bullets(test_sec)
     if len(tests) < 2:
         fail(f"expected 2-3 test bullets, found {len(tests)}")
+    test_items = [clean_inline(t) for t in tests[:3]]
     steps.append(
         {
             "id": "what-to-test",
             "kind": "test",
             "section": clean_inline(test_head)[:40] or "Test",
-            "title": clean_inline(tests[0])[:120],
-            "items": [clean_inline(t)[:160] for t in tests[:3]],
+            "title": test_title_for(test_items, lang),
+            "items": test_items,
         }
     )
     return title, steps, (files, added, removed)
@@ -314,7 +420,7 @@ def validate(data):
     ids = [s["id"] for s in data["steps"]]
     assert len(set(ids)) == len(ids), "duplicate step ids"
     for s in data["steps"]:
-        assert len(s["title"]) <= 120, f"title too long: {s['id']}"
+        assert len(s["title"]) <= TITLE_MAX, f"title too long: {s['id']}"
 
 
 def main():
@@ -351,12 +457,12 @@ def main():
     head = args.head or git("rev-parse", "--short", "HEAD") or "HEAD"
     repo_root = args.repo_root or git("rev-parse", "--show-toplevel")
 
-    title, steps, (nfiles, nadded, nremoved) = parse_markdown(md, args)
+    title, steps, (nfiles, nadded, nremoved) = parse_markdown(md, args, lang)
     data = {
         "schemaVersion": 1,
         "lang": lang,
         "meta": {
-            "title": title[:120],
+            "title": title[:TITLE_MAX],
             "branch": args.branch or "branch",
             "base": args.base or "main",
             "headSha": head,

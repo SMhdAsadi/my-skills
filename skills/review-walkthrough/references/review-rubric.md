@@ -92,10 +92,11 @@ The HTML companion is a second view of the finished markdown walkthrough, not a 
 
 ### 4b. Card Budget (anti-fatigue for the HTML)
 - Every card must read without scrolling on a phone-sized viewport (about 375×667) at normal text size.
-- Step title: one sentence, at most 120 characters, states the problem or the shape of the change.
-- Gotcha body: at most 2 sentences. `lookFor`: at most 1 sentence. `extra`: at most 1 short paragraph, only for a real edge case.
+- Step title: one sentence, at most 160 characters, synthesized by the builder (scope = diff shape, reading = `Read in order: role1 → role2 …`, test = `Verify: keyword1 · keyword2 …`). Never copy the first item verbatim as the title.
+- Gotcha body: 1 to 2 sentences, full text, never truncated. `lookFor`: at most 1 sentence. `extra`: at most 1 short paragraph, only for a real edge case.
+- Never write a `file:line` path in the prose itself (no leading `(path:line):`, no parenthesized path mentions). The anchor belongs in the `file:line` link only; the builder strips prose mentions and the renderer links the structured refs.
 - Gotchas: 2–4 (same as the markdown). If the markdown has more than 4, the markdown is the problem; fix it there first.
-- Test items: 2–3, each one line.
+- Test items: 2–3, each one line, full text.
 
 ### 4c. Do Not Invent Structure the Walkthrough Doesn't Have
 - No severity levels, no "must fix / should fix" labels, no ready-made fixes, no pass/fail verdicts. The walkthrough orients the reviewer; it does not judge.

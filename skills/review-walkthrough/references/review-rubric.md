@@ -81,28 +81,27 @@ Compile the log into a ready-to-post markdown block only on explicit user reques
 
 ---
 
-## 4. HTML Companion: Content-Shaping Rules
+## 4. Structured Walkthrough: Content-Shaping Rules
 
-The HTML companion is a second view of the finished markdown walkthrough, not a second analysis. These rules keep the two in sync and keep every card inside the anti-fatigue budget. The full technical spec lives in [`html-walkthrough.md`](html-walkthrough.md).
+The walkthrough is authored JSON-first (`review-walkthrough.json`), from which both the Markdown walkthrough and the card-based HTML companion are deterministically compiled by `scripts/build-walkthrough.py`. The structured JSON is the single source of truth. These rules keep the contents inside the anti-fatigue budget. The full technical spec lives in [`html-walkthrough.md`](html-walkthrough.md).
 
-### 4a. Same Facts, Re-expressed Wording
-- Carry over the same gotchas, the same files, the same order, and the same `file:line` anchors. Counts must match: number of gotchas, number of reading-order items, number of test bullets.
-- Do not paste markdown into JSON. Convert `[file.ext:line](#)` links into structured `refs` entries (`path`, `startLine`, `endLine`). Strip heading markers and checkbox syntax.
-- The markdown uses the spoken developer voice; the HTML uses the register defined in its spec (for Persian, formal but readable). Re-express the wording, never the facts.
+### 4a. Pure Prose Bodies & Structured Anchors
+- **Pure Conversational Prose:** Body text in gotchas and summaries in reading items must be 100% natural conversational prose. **Never prepend parenthesized path mentions** (e.g., do NOT write `(Bar.tsx:35): ...` or `([Bar.tsx:35](#)): ...`).
+- **Structured References:** File references live strictly inside structured `refs` arrays (or `items` for reading order) with `path`, `startLine`, and optional `endLine`.
+- The generator/renderer automatically constructs file links and 1-click Copy Path pills (`.ref-pill`) in HTML, and clean links alongside bold roles in Markdown.
 
-### 4b. Card Budget (anti-fatigue for the HTML)
+### 4b. Card Budget (Anti-Fatigue)
 - Every card must read without scrolling on a phone-sized viewport (about 375×667) at normal text size.
-- Step title: one sentence, at most 160 characters, synthesized by the builder (scope = diff shape, reading = `Read in order: role1 → role2 …`, test = generic count-based line). Never copy item text into a title.
+- Step title: one sentence, at most 160 characters (scope = diff shape, reading = `Read in order: role1 → role2 …`, test = generic count-based line). Never copy item text into a title.
 - Gotcha body: 1 to 2 sentences, full text, never truncated. `lookFor`: at most 1 sentence. `extra`: at most 1 short paragraph, only for a real edge case.
-- Write each `file:line` anchor once, in the standard `([file:line](#))` position right after the bold role/title. The renderer shows it inline as a short `basename:line` link and omits the duplicate footnote. Never repeat the same path elsewhere in the prose.
-- Gotchas: 2–4 (same as the markdown). If the markdown has more than 4, the markdown is the problem; fix it there first.
+- Gotchas: 1–4 (rule of thumb: 2–4).
 - Test items: 2–3, each one line, full text.
 
 ### 4c. Do Not Invent Structure the Walkthrough Doesn't Have
 - No severity levels, no "must fix / should fix" labels, no ready-made fixes, no pass/fail verdicts. The walkthrough orients the reviewer; it does not judge.
-- No code snippets or diff hunks in the HTML. The reviewer reads real, untrimmed code in the IDE, and the editor links are the bridge to it.
-- No `evidence` or "why it matters" blocks unless the markdown gotcha itself contains that explanation.
-- A gotcha without a verifiable `file:line` is invalid (anchoring rule). Fix or omit it in the markdown, then regenerate.
+- No code snippets or diff hunks in the HTML. The reviewer reads real, untrimmed code in the IDE, and the editor links / copy buttons are the bridge to it.
+- No `evidence` or "why it matters" blocks unless the review findings specifically call for that explanation.
+- A gotcha without at least one verifiable `file:line` ref is invalid (anchoring rule). Ensure every gotcha anchors to actual changed code.
 
 ### 4d. Gotcha Category Mapping
 Pick exactly one `category` per gotcha, from the Key Gotcha Categories in Section 2:

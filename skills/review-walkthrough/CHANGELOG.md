@@ -7,6 +7,28 @@ Each release is tagged `review-walkthrough-v<version>` and published on the [Rel
 
 ---
 
+## [3.0.0] - 2026-10-11
+
+### Added
+- **JSON-first architecture:** `review-walkthrough.json` (Schema v2) is now the single source of truth for all walkthrough deliverables. Both the Markdown walkthrough and the companion HTML file are compiled deterministically in forward generation.
+- **Forward generator script (`scripts/build-walkthrough.py`):** Compiles `review-walkthrough.json` into both `.md` and `.html` in milliseconds, with strict schema validation and diff-aware path resolution (`git diff --name-only`).
+- **Multi-IDE support:** Top-bar editor switcher supporting **VS Code**, **Cursor**, **Windsurf**, **Zed** (`zed://file/...`), and **JetBrains** (`idea://open?...`), plus a **Copy Only** mode. Active editor is persisted in `localStorage["rw-editor"]`.
+- **1-Click Copy Path (`.cp-btn`):** Dedicated copy button on every reference pill that copies repo-relative `path:line` to the clipboard with visual confirmation feedback.
+- **Dedicated reference pills:** Gotcha file references are displayed in dedicated `.ref-pill` rows, keeping body prose 100% human and conversational without sentence-flipping parenthesized path prefixes.
+- **Scrollable reading checklist:** Reading orders with more than 6 files render inside a scrollable checklist container (`.chk-list`) with styled scrollbars to maintain viewport budget.
+
+### Changed
+- **Ultra-lean offline footprint:** Removed the 78 KB base64 embedded font blob from `assets/walkthrough-template.html`. Asset size reduced from ~90.6 KB to ~23.7 KB (~74% reduction). Persian font uses `local("Vazirmatn")` and native Arabic/Persian system UI stacks, strictly scoped to `[lang="fa"]`.
+- **Pure conversational prose:** Gotcha bodies and reading summaries are validated to ensure they contain pure prose without parenthesized file:line mentions.
+- **Unblocked checkbox interaction:** Native checklist checkboxes are excluded from card keyboard navigation traps, allowing reviewers to toggle checks with the Spacebar without triggering step navigation.
+- **Universal generation:** Both Markdown and HTML companions are generated simultaneously on every run without fast-path skips.
+
+### Fixed
+- **Basename path ambiguity:** File references are resolved against `git diff --name-only` rather than full repository walk, avoiding false matches and directory ambiguity.
+- **Backwards compatibility:** `scripts/build-html.py` delegates seamlessly to `build-walkthrough.py` when invoked directly.
+
+---
+
 ## [2.4.2] - 2026-10-11
 
 ### Changed

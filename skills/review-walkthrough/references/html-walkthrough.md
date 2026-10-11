@@ -6,13 +6,13 @@ Authoritative spec for the HTML companion that `review-walkthrough` generates ne
 
 ---
 
-## 1. Output Contract
+### 1. Output Contract
 
-- One self-contained `.html` file: inline CSS and JS, no external requests, no CDN, no remote fonts.
-- The content is a JSON data block at the top of the file. The template (markup, CSS, JS, embedded fonts) is static and is never rewritten per run. `scripts/build-html.py` fills in the JSON from the finished markdown; agents never hand-write it and never open the template in model context.
+- One self-contained `.html` file: inline CSS and JS, no external requests, no CDN, no remote fonts (~24 KB total size).
+- The content is a JSON data block at the top of the file. The template (markup, CSS, JS) is static and is never rewritten per run. The authoring agent writes `review-walkthrough.json` as the single source of truth, and `scripts/build-walkthrough.py` deterministically compiles both the Markdown walkthrough and the companion HTML file.
 - Language is the language of the user's first prompt, the same as the markdown, and is declared once in the JSON `lang` field. The template sets `<html lang>` and `dir` from it (RTL for fa, ar, he, ur, ps, ku, yi, dv). All layout uses logical properties, so flipping `dir` still works.
 - Without JavaScript the template shows a bilingual (English and Persian) `<noscript>` note pointing to the markdown file next to it (same basename, `.md`).
-- The template ships as `assets/walkthrough-template.html` with the Vazirmatn subset already embedded and an empty `{}` data block. The builder script copies it and replaces only the contents of the JSON block; markup, CSS, JS, and fonts are never touched per run. It validates the data (Section 2) and shows an error card instead of a half-built walkthrough. The spec below documents what the template implements and is the reference for changing it.
+- The template ships as `assets/walkthrough-template.html` with a lean font stack (`local("Vazirmatn")` + system fonts) and an empty `{}` data block. The builder script copies it and replaces only the contents of the JSON block; markup, CSS, JS, and fonts are never touched per run. It validates the data against Schema v2 (Section 2) and shows an error card instead of a half-built walkthrough.
 
 ---
 
@@ -23,13 +23,13 @@ Authoritative spec for the HTML companion that `review-walkthrough` generates ne
 - When serializing, escape `<` as `\u003c`, and escape U+2028 and U+2029, so author text can never close the script tag.
 - The renderer builds the DOM with `textContent`. It never assigns author text to `innerHTML`. The only inline markup allowed inside strings is `` `code` `` and `**bold**`, converted by the renderer. Authors never write raw HTML or bidi control characters.
 - If `JSON.parse` or validation fails, the page shows a single error card in the document language (Persian: «داده‌های راهنما نامعتبر است») listing the first problem. It never renders a half-built walkthrough.
-- The skill validates the JSON against the rules below before writing the file.
+- The skill validates the JSON against Schema v2 before writing the file.
 
 ### Top level
-```
+```json
 {
-  "schemaVersion": 1,
-  "lang": "fa",                      // BCP-47 code: the language of the user's first prompt, same as the markdown
+  "schemaVersion": 2,
+  "lang": "fa",                      // BCP-47 code: the language of the user's first prompt
   "ui":   optional object of UI strings for languages the template does not include (Section 12)
   "meta": {
     "title":        string, one line: the feature or branch name (page header)
@@ -40,10 +40,8 @@ Authoritative spec for the HTML companion that `review-walkthrough` generates ne
     "markdownPath": optional, absolute path of the markdown walkthrough
   },
   "repo": {
-    "root":   absolute path of the working tree on this machine (see Section 3).
-              Omit if unknown. Never guess.
-    "editor": "vscode" (default) | "vscode-insiders" | "cursor" | "windsurf" | "vscodium"
-    "remote": optional, e.g. "wsl+Ubuntu" or "ssh-remote+myhost"
+    "root":          absolute path of the working tree on this machine (see Section 3).
+    "defaultEditor": "vscode" (default) | "cursor" | "windsurf" | "zed" | "idea" | "copy"
   },
   "steps": [ ...in display order... ]
 }
@@ -119,7 +117,7 @@ or the localized equivalent) — never words copied from the items.
 ### Example (shortened)
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "lang": "fa",
   "meta": {
     "title": "هدر نویسندهٔ ریشهٔ کلاستر در TopBar",
@@ -129,7 +127,7 @@ or the localized equivalent) — never words copied from the items.
     "stats": { "files": 6, "added": 163, "removed": 62 },
     "markdownPath": "/tmp/review-walkthrough-feat-5258-1791699889.md"
   },
-  "repo": { "root": "/Users/me/projects/messenger", "editor": "vscode" },
+  "repo": { "root": "/Users/me/projects/messenger", "defaultEditor": "vscode" },
   "steps": [
     {
       "id": "scope", "kind": "scope", "section": "دامنه",
@@ -171,36 +169,42 @@ or the localized equivalent) — never words copied from the items.
 
 ---
 
-## 3. Editor Links (File References)
+## 3. Editor Links & Multi-IDE Support
 
-### Rendering
-- Each file appears exactly once per card. When the prose already mentions the same `file:line`, the renderer shows it there as an inline link and omits the separate footnote below. Only refs with no inline mention get their own footnote link.
-- Footnote links display the file's base name plus lines (`Bar.tsx:35-40`, or `Bar.tsx:35` when there is no `endLine`), with `display:block; direction:ltr; unicode-bidi:isolate; width:fit-content`, aligned to the reading start. The full `path:lines` text goes in the anchor's `title` and `aria-label`. The `href` always uses the full repo-relative path — the label is short, the target never is.
-- The builder resolves basename-only refs to full repo-relative paths via `git ls-files` (single match wins; ambiguous names stay short), and expands `~` in the repo root. Inline basename-only mentions resolve against the same walkthrough-wide map; a mention that matches nothing (or matches several files) renders as plain code, never as a broken link. An unresolvable footnote renders as a non-link `<span>`.
-- When two refs in the same walkthrough share a base name, each shows its parent directory too (`…/topBar/TopBar.tsx:76`) so they stay distinguishable.
-- A small status dot precedes the link only for `added` (green) and `deleted` (red) files; `modified` (the default) shows no dot.
-- Bare `path:line` mentions inside body/summary prose are linkified inline with the same short display text, so prose never needs a parenthesized path mention of its own.
-- Link style: `--accent` color, underline on hover and focus, standard focus ring. No pill, no box, no emoji. A small "open" SVG icon follows the text.
-- `title` and `aria-label` on the anchor: «باز کردن در ویرایشگر».
-- Use a plain anchor. No `window.open`, no JS navigation, no `target="_blank"`. It must work from a `file://` page.
-- Reading-order items use the same anchor for their `path:startLine-endLine` text.
+### Rendering & Reference Pills
+- **Dedicated Reference Pills:** References in gotchas are rendered in a clean row of pills (`.ref-pill`) under the gotcha title/body. Reading items render their deep links directly beside their role and summary.
+- **Pure Prose Guarantee:** Body text and summaries are 100% natural conversational prose. They never include leading parenthesized path mentions (e.g. no `(Bar.tsx:35): ...`). All path references are handled by the structured refs.
+- **Display Label:** File links display the file's base name plus lines (`Bar.tsx:35-40`, or `Bar.tsx:35` when there is no `endLine`), with `display:inline-flex; direction:ltr; unicode-bidi:isolate`. The full `path:lines` text goes in the anchor's `title` and `aria-label`. The `href` always targets the full repo-relative path.
+- **Disambiguation:** When two refs share a base name, the builder displays the parent directory too (`…/topBar/TopBar.tsx:76`) to keep them immediately distinct.
+- **Status Dots:** A small status dot precedes the link for `added` (green) and `deleted` (red) files; `modified` shows no dot.
+- **1-Click Copy Path (`.cp-btn`):** Every reference pill includes a dedicated copy button that copies the repo-relative `path:startLine` (or `path:startLine-endLine`) directly to the clipboard, providing an immediate fallback for terminal workflows or editors without URL scheme handlers.
 
-### URL construction (in the renderer, from `repo.root`, `repo.editor`, `path`)
-- Local: `{editor}://file/{root}/{path}:{startLine}`
+### Multi-IDE Header Selector
+The HTML header includes an editor selector dropdown allowing reviewers to choose their active IDE at any time:
+- **VS Code** (`vscode`)
+- **Cursor** (`cursor`)
+- **Windsurf** (`windsurf`)
+- **Zed** (`zed`)
+- **JetBrains / IntelliJ** (`idea`)
+- **Copy Only** (`copy`)
+
+The selected editor is saved across sessions in `localStorage["rw-editor"]`. Initial default is loaded from `repo.defaultEditor` (or falls back to `vscode`).
+
+### URL Construction (by Editor)
+- **VS Code / Cursor / Windsurf:**
+  `{editor}://file/{root}/{path}:{startLine}`
   Example: `vscode://file/Users/me/app/src/PostDetailsTopBar.tsx:37`
-- Remote (only when `repo.remote` is set): `{editor}://vscode-remote/{remote}/{root}/{path}:{startLine}`
-- Normalize `root`: backslashes to forward slashes, strip any trailing slash. A Windows drive keeps its form (`vscode://file/C:/Users/me/app/...`). A POSIX root starts with a single slash after `file`, never doubled.
-- Percent-encode each path segment with `encodeURIComponent`, then rejoin with `/`. Do not encode the slashes or the drive colon.
-- Only `startLine` goes in the URL (the editor cannot open a range). The visible text still shows the full range.
-- Schemes: `vscode`, `vscode-insiders`, `cursor`, `windsurf`, `vscodium`. An unknown editor value is a validation error. Paths containing `..` or control characters are a validation error.
+- **Zed:**
+  `zed://file/{root}/{path}:{startLine}`
+- **JetBrains:**
+  `idea://open?file={root}/{path}&line={startLine}`
+- **Copy Only:**
+  Clicking the link copies the relative path to clipboard and shows copied feedback without opening a URL handler.
+- **Normalization:** Root path backslashes convert to forward slashes; trailing slashes are stripped. Each path segment is percent-encoded via `encodeURIComponent` and rejoined with `/`. Only `startLine` is included in the URL (editors cannot navigate to a range).
 
-### Fallbacks
-- If `repo.root` is missing, or the ref's `status` is `deleted`, render the same short text as a non-link `<span>` with a muted label «حذف‌شده» for deleted files.
-- The footer always shows one muted line: line numbers refer to commit `headSha`, and links open the current working tree (Persian: «شمارهٔ خط‌ها به کامیت `headSha` اشاره می‌کنند و فایل‌ها از working tree فعلی باز می‌شوند.»), plus the markdown file's base name (full absolute path in the tooltip) when `meta.markdownPath` is set.
-
-### Known limits (mention to the user when relevant)
-- The first click on a `vscode://` link makes the browser ask for confirmation; the user can allow it permanently.
-- If the working tree has moved off the pinned commit, line numbers can drift. The staleness check in SKILL.md Section 6 covers regeneration.
+### Fallbacks & Staleness
+- If `repo.root` is missing or the ref's `status` is `deleted`, the file renders as a non-link `<span>` with a muted label («حذف‌شده» / «deleted»).
+- The footer shows a reminder that line numbers refer to commit `headSha` and links open the current working tree.
 
 ---
 
@@ -244,6 +248,8 @@ These rules apply to the HTML text. The markdown walkthrough keeps its own spoke
 | Previous / Next | قبلی / بعدی |
 | Theme: System / Light / Dark | خودکار / روشن / تیره |
 | Open in editor | باز کردن در ویرایشگر |
+| Copy path | رونوشت |
+| Copied | کپی شد! |
 | Deleted | حذف‌شده |
 | Invalid data | داده‌های راهنما نامعتبر است |
 
@@ -252,16 +258,25 @@ These rules apply to the HTML text. The markdown walkthrough keeps its own spoke
 
 ---
 
-## 5. Font (Vazirmatn, embedded)
+## 5. Font (Vazirmatn & System UI Stack)
 
-Already embedded in the shipped template (weights 400 and 600, about 70 KB of base64) and applied automatically when `lang` is fa or ar; agents never touch it. This section documents how it was built, for rebuilding the template.
+The template delivers an ultra-lean footprint (~23.7 KB total file size) with zero remote CDN dependencies and zero embedded base64 font blobs.
 
-- Embed Vazirmatn as base64 woff2 in `@font-face`, inside the static template. Get it from the npm package `vazirmatn` or its GitHub release.
-- Subset with fonttools (`pyftsubset`) to: Basic Latin, U+00A0, U+00AB, U+00BB, U+0600-06FF, U+06F0-06F9, U+FB50-FDFF, U+FE70-FEFF, U+200C-200F, U+2010-2027. Keep layout features `kern, liga, calt, locl, ccmp, init, medi, fina, rlig, mark, mkmk, curs`. Output woff2.
-- Only two weights: 400 and 600 (instance the variable font or embed two static files). Target under about 120 KB of base64 in total.
-- `font-display: block`. Stack: `"Vazirmatn", Tahoma, system-ui, sans-serif`. Code stack: `ui-monospace, "SF Mono", Menlo, Consolas, monospace`.
-- Keep the OFL license notice as a CSS comment next to the `@font-face` rules.
-- When rebuilding the template and the font cannot be fetched or subset, do not ship a fallback-font template.
+- **Persian (`lang="fa"`):** Uses `@font-face` referencing local installations of Vazirmatn, with seamless fallback to native Arabic/Persian system fonts:
+  ```css
+  @font-face {
+    font-family: 'Vazirmatn';
+    src: local('Vazirmatn'), local('Vazir');
+    font-weight: 400 700;
+    font-display: swap;
+  }
+  :root[lang="fa"] {
+    --sans: "Vazirmatn", "SF Arabic", "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  ```
+- **Strict Language Scoping:** The Vazirmatn declaration is scoped strictly to `lang="fa"`. Arabic (`ar`) and other languages use their native platform font stacks.
+- **English & LTR Languages:** Use modern system UI typography (`system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`).
+- **Code Stack:** Monospace fallback stack (`ui-monospace, "SF Mono", Menlo, Consolas, monospace`).
 
 ---
 
@@ -328,12 +343,12 @@ Tokens (names are fixed; values may move ±5% lightness, never hue):
 - Callouts (`lookFor`, split recommendation): a 3px inline-start border plus a small bold label, no filled background. `lookFor` uses a muted border; the split callout uses `--warn`.
 - The card uses auto height with a small min-height (~180px); the nav buttons sit in a sticky footer area. Nothing jumps between steps.
 - Only the `scope` step may be centered. Everything else aligns to the reading start.
-- Page header: `meta.title`, then a branch line with each branch as a tag (`from-tag → to-tag`), then a stats line (`N files · +added (green) / −removed (red)`), then «گام ۲ از ۷» with the current `section`.
-- Gotcha card, top to bottom: quiet category label with a `--warn` dot and counter («نکتهٔ ۱ از ۳ · حالت مرزی»), title, body, file references, optional `extra`, optional «بررسی کنید» callout.
-- Reading step: a native `<input type="checkbox">` list, one item per file (role in weight 600, summary, then the editor link). Checked state is saved per `headSha` in `localStorage` (try/catch, key `review-walkthrough:<headSha>`). The `skim` line follows the list as plain muted text.
+- Page header: `meta.title`, then a branch line with each branch as a tag (`from-tag → to-tag`), then a stats line (`N files · +added (green) / −removed (red)`), the IDE selector dropdown, then «گام ۲ از ۷» with the current `section`.
+- Gotcha card, top to bottom: quiet category label with a `--warn` dot and counter («نکتهٔ ۱ از ۳ · حالت مرزی»), title, pure human prose body, reference pill row with deep links and 1-click copy buttons, optional `extra`, optional «بررسی کنید» callout.
+- Reading step: a native `<input type="checkbox">` list, one item per file (role in weight 600, summary, then the editor link with copy button). Checkbox inputs are unblocked from card key traps so reviewers can toggle them using Space. For lists with >6 files, `.chk-list` enables a clean vertical scroll area. Checked state is saved per `headSha` in `localStorage` (key `review-walkthrough:<headSha>`). The `skim` line follows the list as plain muted text.
 - Progress: a thin segmented bar (one segment per step) with a 24px touch target per segment, filling from inline-start. No dot row.
 - Buttons: Previous is ghost, Next is solid `--accent`, same height, one SVG chevron each as in Section 6. No `<kbd>` hints — arrow keys still work and are documented in the button tooltip.
-- Inline code: monospace with a subtle `--code-bg` tint, no border. Branch names use the same tag style. No other pill chips anywhere.
+- Inline code: monospace with a subtle `--code-bg` tint, no border. Branch names use the same tag style.
 - Deep links: `#step-id` selects a step; handle `hashchange`.
 - Print: force the light tokens, show all steps in sequence, hide navigation and the theme control.
 
@@ -348,13 +363,13 @@ Tokens (names are fixed; values may move ±5% lightness, never hue):
 
 ## 10. Don't
 
-No more than 2 font weights, no emoji, no pill badges except the branch tags, no shadows beyond a 1px border, no fixed pixel widths, no hardcoded left/right, no text arrows, no uppercase or letter-spacing, no code snippets or diff hunks, no severity labels.
+No more than 2 font weights, no emoji, no pill badges except the branch tags and reference pills, no shadows beyond a 1px border, no fixed pixel widths, no hardcoded left/right, no text arrows, no uppercase or letter-spacing, no code snippets or diff hunks, no severity labels.
 
 ---
 
-## 11. Verification (one check, no browser pass)
+## 11. Verification (Deterministic Generator)
 
-- `scripts/build-html.py` exits 0: the JSON parses, step order/counts match the markdown (`scope` first, `test` last, `reading` after the last `gotcha`), and every gotcha carries at least one `file:line` ref. That is the entire verification — there is deliberately no light/dark screenshot pass, no font proof, and no editor-link click-through. Those checks cost minutes on every run and were always skipped in practice.
+- `scripts/build-walkthrough.py` exits 0: the input JSON parses and strictly validates against Schema v2 (`walkthrough_schema.py`), all referenced paths are resolved against `git diff --name-only`, and both the Markdown walkthrough and the companion HTML file are compiled. This single command serves as the complete verification.
 
 ---
 
@@ -362,7 +377,7 @@ No more than 2 font weights, no emoji, no pill badges except the branch tags, no
 
 The template has built-in UI strings for English (`en`) and Persian (`fa`). Direction, digits (Persian digits only for `fa`), and the font follow `lang`.
 
-- **Any other language** (German, Spanish, Arabic, ...): set `lang` and provide a complete `ui` object in the JSON. Missing keys fall back to English, so omit none. Translate idiomatically using the headings and labels in the SKILL.md reference table, with no bilingual tagging. Keys: `step, of, scope, branch, split, gist, affects, heads, check, reading, skim, test, text, prev, next, theme, sys, light, dark, open, deleted, invalid, files, foot, nav` and `cat` (an object with `edge-case, state, layout, concurrency, persistence, other`). `foot` must contain `{sha}`, and `heads` is the word before the counter («Heads up 1 of 3»). (`copy` / `copied` keys are legacy and ignored — there is no copy button.)
+- **Any other language** (German, Spanish, Arabic, ...): set `lang` and provide a complete `ui` object in the JSON. Missing keys fall back to English, so omit none. Translate idiomatically using the headings and labels in the SKILL.md reference table, with no bilingual tagging. Keys: `step, of, scope, branch, split, gist, affects, heads, check, reading, skim, test, text, prev, next, theme, sys, light, dark, open, copy, copied, deleted, invalid, files, foot, nav` and `cat` (an object with `edge-case, state, layout, concurrency, persistence, other`). `foot` must contain `{sha}`, and `heads` is the word before the counter («Heads up 1 of 3»).
 - **LTR languages** use a system sans stack, a right-pointing chevron for Next, and ArrowRight advances.
-- **Other RTL languages** (Arabic, Hebrew, ...) get Sections 6 to 9 unchanged. Arabic uses the embedded Vazirmatn; Hebrew and others fall back to the system stack.
+- **Other RTL languages** (Arabic, Hebrew, ...) get Sections 6 to 9 unchanged using their platform system fonts.
 - The register rules in Section 4 are Persian-specific; for other languages use a neutral, professional tone.

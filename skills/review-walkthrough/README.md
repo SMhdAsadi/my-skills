@@ -19,18 +19,18 @@ Interactive chat walkthroughs introduce problems of their own: turn-by-turn gati
 
 ## The Solution
 
-`review-walkthrough` acts as a **lean, practical review co-pilot**. It analyzes the branch diff once, writes a compact (~40–60 line) **review walkthrough** to an ephemeral markdown file, renders the same content as a card-based **HTML companion**, and hands both over: the reviewer reads the walkthrough side-by-side with their native IDE or diff viewer, jumps straight into real code from any `file:line` reference, and calls on the agent only for emergent questions — answered through neutral, both-hypotheses code investigation.
+`review-walkthrough` acts as a **lean, practical review co-pilot**. It analyzes the branch diff once, writes a structured JSON document (`review-walkthrough.json`) as the single source of truth, and deterministically generates both a compact (~40–60 line) **review walkthrough** markdown file and an interactive card-based **HTML companion** via `scripts/build-walkthrough.py`. The reviewer reads at their own pace side-by-side with their native IDE or diff viewer, jumps straight into real code via multi-IDE deep links or 1-click Copy Path buttons, and calls on the agent only for emergent questions — answered through neutral, both-hypotheses code investigation.
 
 ---
 
 ## Key Features
 
 - **Lean Review Walkthrough**: A compact, structured markdown artifact (~40–60 lines) written to an ephemeral, never-git-tracked location, opened side-by-side with your editor. Zero fluff, zero academic pretense.
-- **HTML Companion**: The same walkthrough as a self-contained, presentation-style HTML file, one card per step. Follows your OS light/dark theme (One Light / One Dark Pro) (with a manual icon override), green/red diff stats, branch tags, keyboard navigation, a checkable reading list, and no external requests. Built automatically for larger diffs; small diffs (≤5 files, ≤200 lines) stay markdown-only unless you ask for HTML. Say "markdown only" to skip it.
-- **Open in Your Editor**: Every `file:line` in the HTML is a link that opens the file at that line in VS Code (also Cursor, Windsurf, VSCodium, Insiders, and remote/WSL setups), shown as a short `basename:line` label with the full path in the tooltip.
-- **Full RTL Support**: Persian HTML renders right-to-left with embedded Vazirmatn (works offline), direction-aware arrows and keyboard shortcuts, and isolated Latin identifiers so paths and flags never scramble.
+- **HTML Companion**: The same walkthrough as a self-contained, presentation-style HTML file (~24 KB), one card per step. Follows your OS light/dark theme (One Light / One Dark Pro) with a manual icon override, green/red diff stats, branch tags, keyboard navigation, a checkable reading list, and zero external requests.
+- **Multi-IDE & 1-Click Copy**: Deep links for **VS Code**, **Cursor**, **Windsurf**, **Zed**, and **JetBrains** (`idea://`), selectable in the top bar and remembered across sessions. Dedicated 1-click Copy Path buttons (`path:line`) next to every reference pill for terminal or custom editors.
+- **Full RTL & Persian Support**: Offline-first, lightweight font stack (`local("Vazirmatn")` + system UI fonts) scoped strictly to Persian (`lang="fa"`), direction-aware arrows and keyboard shortcuts, pure conversational prose, and isolated Latin identifiers so paths and flags never scramble.
 - **Language-Agnostic & Conversational**: Naturally matches the language of your prompt (German, Persian, Spanish, etc.) in a relaxed, punchy peer-to-peer developer voice, with fully localized headings/labels and RTL layout preservation while keeping technical code terms intact.
-- **Gotchas & Risks Upfront**: 2–4 line-anchored, practical edge cases right below the 2-sentence summary — spotting traps before you dive into the code.
+- **Gotchas & Risks Upfront**: 1–4 line-anchored, practical edge cases right below the 2-sentence summary — spotting traps before you dive into the code.
 - **File-Grouped Reading Order**: Logical foundation-to-leaf reading sequence grouped by file with clickable links (no fragmented line-by-line bullets or clunky ASCII trees).
 - **Split Recommendation**: For oversized diffs, suggests splitting the PR before generating the walkthrough.
 - **Base Ref Pinning & Staleness Detection**: Pins `HEAD` at walkthrough generation time and re-checks it during review, offering to regenerate both files after a rebase or amend.
@@ -48,29 +48,27 @@ In any compatible AI assistant (Claude Code, Cursor, OpenCode, Codex, Antigravit
 - *"Can you give me a guided code review?"*
 - *"Review this PR against main"*
 - *"Generate a review walkthrough for this diff"*
-- *"Walk me through this branch, markdown only"* (skips the HTML companion)
 
 ---
 
 ## The HTML Companion
 
-The markdown file is the source of truth; the HTML is a second view of it, not a second analysis. Each walkthrough section becomes a step:
+Structured JSON (`review-walkthrough.json`) is the single source of truth; both Markdown and HTML are generated in lockstep via `scripts/build-walkthrough.py`. Each walkthrough section corresponds directly to a step:
 
-| Markdown section | HTML step |
+| Walkthrough section | HTML step |
 | :--- | :--- |
 | Header, scope bar, The Gist | Scope card |
 | Split Recommendation (large diffs only) | Split card |
-| Each Heads Up gotcha | One card per gotcha, with `file:line` editor links |
-| Suggested Reading Order + Skim | Checkable reading list |
+| Each Heads Up gotcha | One card per gotcha, with pure prose, `.ref-pill` rows, deep links, and copy buttons |
+| Suggested Reading Order + Skim | Checkable reading list (scrollable for >6 files) |
 | What to Test | Test card |
 
 How it works:
 
-- The skill fills a JSON data block via `scripts/build-html.py`; a static template renders it. The template is never rewritten per run, so the look cannot drift between reviews. The 88KB template never enters agent context — the script copies it and injects only the JSON block.
-- Editor links use the `vscode://file/<root>/<path>:<line>` scheme, with the repo root taken from `git rev-parse --show-toplevel`. Your browser asks for confirmation on the first click and can remember the choice. Links open the current working tree, so line numbers can drift if you have moved off the reviewed commit; the staleness check handles regeneration.
+- The skill authors `review-walkthrough.json` and invokes `scripts/build-walkthrough.py`, which validates the JSON against Schema v2, enriches git metadata and paths against `git diff --name-only`, and compiles both `review-walkthrough.md` and `review-walkthrough.html`.
+- Editor links support VS Code, Cursor, Windsurf, Zed, and JetBrains (`idea://`), constructed from `git rev-parse --show-toplevel`. Reviewers can switch editors using the header dropdown or click Copy Path for terminal workflows.
+- The template (`assets/walkthrough-template.html`) is ultra-lean (~24 KB) and completely self-contained. Base64 font bloat has been removed in favor of `local("Vazirmatn")` and native system font stacks.
 - The full spec (design tokens, wording and RTL rules, JSON schema, editor links, verification) is in [`references/html-walkthrough.md`](references/html-walkthrough.md).
-- **Language:** both files use the language of your first prompt. The template has built-in English and Persian UI strings and sets direction and font automatically; other languages work through a `ui` strings object that the agent supplies.
-- **Template:** ships in `assets/walkthrough-template.html` (static, self-contained, Vazirmatn embedded). The builder script (`scripts/build-html.py`) parses the finished markdown into the JSON block and validates it; the template validates the data and shows an error card instead of a half-built page.
 
 ---
 
@@ -79,9 +77,9 @@ How it works:
 ```mermaid
 flowchart TD
     A[Inspect Git Diff & Pin HEAD] --> B[Split Assessment & Structural Analysis]
-    B --> C[Write Review Walkthrough to Ephemeral File]
-    C --> C2[Render HTML Companion from the Same Content]
-    C2 --> D[Chat Briefing: Walkthrough Paths + Top Gotchas]
+    B --> C[Author Structured review-walkthrough.json]
+    C --> C2[Execute build-walkthrough.py: Render MD & HTML]
+    C2 --> D[Chat Briefing: Deliverable Paths + Top Gotchas]
     D --> E[Standby: Reviewer Reads Real Code in Their IDE]
     E --> F{Reviewer Input}
     F -- "ad-hoc question" --> G[Neutral Both-Hypotheses Investigation]
@@ -129,8 +127,8 @@ The skills CLI installs the default branch (latest) by default. To pin a specifi
 # Latest (tracks main)
 npx skills add SMhdAsadi/my-skills@review-walkthrough
 
-# Pinned to v2.3.0
-npx skills add https://github.com/SMhdAsadi/my-skills/tree/review-walkthrough-v2.3.0
+# Pinned to v3.0.0
+npx skills add https://github.com/SMhdAsadi/my-skills/tree/review-walkthrough-v3.0.0
 ```
 
 Note: in `owner/repo@review-walkthrough`, the `@` suffix selects the *skill*, not a version — version pinning is done via the tag URL above. The current version is also recorded in `SKILL.md` under `metadata.version` (informational, per the Agent Skills spec).
@@ -145,11 +143,14 @@ skills/review-walkthrough/
 ├── README.md                     # Human-facing documentation (this file)
 ├── CHANGELOG.md                  # Version history (Keep a Changelog)
 ├── assets/
-│   └── walkthrough-template.html # Static HTML template, Vazirmatn embedded (only the builder script touches it)
+│   └── walkthrough-template.html # Lean static HTML companion template (~24 KB)
 ├── scripts/
-│   └── build-html.py             # Parses the finished markdown into the template's JSON block + validates
+│   ├── build-walkthrough.py      # Forward generator: compiles JSON -> MD & HTML
+│   ├── build-html.py             # Backwards-compatible delegation shim
+│   ├── walkthrough_schema.py     # Schema v2 validator and path safety checks
+│   └── walkthrough_generator.py  # Markdown and HTML compilation logic
 └── references/
-    ├── review-rubric.md          # Layering heuristics, risk-hypothesis formulas, investigation templates, HTML content-shaping rules
+    ├── review-rubric.md          # Layering heuristics, risk-hypothesis formulas, investigation templates
     └── html-walkthrough.md       # HTML companion spec: design, wording, RTL, JSON schema, editor links
 ```
 

@@ -1,6 +1,6 @@
 # Review Walkthrough Rubric & Reference
 
-Supplementary heuristics for executing the `review-walkthrough` skill: practical sequencing, punchy gotcha formulation, and neutral-investigation templates.
+Supplementary heuristics for executing the `review-walkthrough` skill: practical sequencing, punchy gotcha formulation, neutral-investigation templates, and content-shaping rules for the HTML companion.
 
 ---
 
@@ -78,3 +78,44 @@ Keep a running internal log during standby; it feeds on-demand output only, neve
 ```
 
 Compile the log into a ready-to-post markdown block only on explicit user request.
+
+---
+
+## 4. HTML Companion: Content-Shaping Rules
+
+The HTML companion is a second view of the finished markdown walkthrough, not a second analysis. These rules keep the two in sync and keep every card inside the anti-fatigue budget. The full technical spec lives in [`html-walkthrough.md`](html-walkthrough.md).
+
+### 4a. Same Facts, Re-expressed Wording
+- Carry over the same gotchas, the same files, the same order, and the same `file:line` anchors. Counts must match: number of gotchas, number of reading-order items, number of test bullets.
+- Do not paste markdown into JSON. Convert `[file.ext:line](#)` links into structured `refs` entries (`path`, `startLine`, `endLine`). Strip heading markers and checkbox syntax.
+- The markdown uses the spoken developer voice; the HTML uses the register defined in its spec (for Persian, formal but readable). Re-express the wording, never the facts.
+
+### 4b. Card Budget (anti-fatigue for the HTML)
+- Every card must read without scrolling on a phone-sized viewport (about 375×667) at normal text size.
+- Step title: one sentence, at most 120 characters, states the problem or the shape of the change.
+- Gotcha body: at most 2 sentences. `lookFor`: at most 1 sentence. `extra`: at most 1 short paragraph, only for a real edge case.
+- Gotchas: 2–4 (same as the markdown). If the markdown has more than 4, the markdown is the problem; fix it there first.
+- Test items: 2–3, each one line.
+
+### 4c. Do Not Invent Structure the Walkthrough Doesn't Have
+- No severity levels, no "must fix / should fix" labels, no ready-made fixes, no pass/fail verdicts. The walkthrough orients the reviewer; it does not judge.
+- No code snippets or diff hunks in the HTML. The reviewer reads real, untrimmed code in the IDE, and the editor links are the bridge to it.
+- No `evidence` or "why it matters" blocks unless the markdown gotcha itself contains that explanation.
+- A gotcha without a verifiable `file:line` is invalid (anchoring rule). Fix or omit it in the markdown, then regenerate.
+
+### 4d. Gotcha Category Mapping
+Pick exactly one `category` per gotcha, from the Key Gotcha Categories in Section 2:
+
+| Key Gotcha Category | `category` value |
+| :--- | :--- |
+| Edge cases & boundary traps | `edge-case` |
+| State & re-render fan-out | `state` |
+| Layout & styling collisions | `layout` |
+| Concurrency & ordering | `concurrency` |
+| Persistence & reset surprises | `persistence` |
+| Anything else | `other` |
+
+### 4e. Reading-Order Items
+- One item per file, with the consolidated range, exactly as in the markdown. `role` is a short noun phrase, not a sentence.
+- Keep the foundation-to-leaf order from Section 1.
+- The skimmable files go in `skim` as bare paths, never as separate items.

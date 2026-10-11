@@ -1,23 +1,24 @@
 ---
 name: review-walkthrough
-description: "Generates an anti-fatigue review walkthrough for a branch diff, then stays on standby as an on-demand review co-pilot. Use when the user wants to walk through changes, review a branch, examine a diff, or asks for a guided code review."
+description: "Generates an anti-fatigue review walkthrough for a branch diff (a lean markdown file plus a card-based HTML companion with clickable editor links), then stays on standby as an on-demand review co-pilot. Use when the user wants to walk through changes, review a branch, examine a diff, or asks for a guided code review."
 license: MIT
 compatibility: "git >= 2.0"
 metadata:
   author: SMhd
-  version: "2.1.3"
+  version: "2.2.0"
   tags:
     - git
     - code-review
     - walkthrough
     - developer-tools
+    - html
 ---
 
 # Review Walkthrough
 
 An **Anti-Fatigue Review Walkthrough Generator and On-Demand Review Co-Pilot** designed to help developers review code better and faster in their native IDE.
 
-Instead of dumping a wall of formal academic text or gating the review behind turn-by-turn chat steps, this skill analyzes the branch diff once, writes a lean, high-signal, engaging **review walkthrough** to an ephemeral markdown artifact, and then stands by: the human reviews at their own pace in their IDE or diff viewer, and asks the agent questions only when they hit ambiguities, tricky logic, or suspected bugs. Consult [`references/review-rubric.md`](references/review-rubric.md) for layering heuristics, risk-hypothesis formulas, and investigation templates.
+Instead of dumping a wall of formal academic text or gating the review behind turn-by-turn chat steps, this skill analyzes the branch diff once, writes a lean, high-signal, engaging **review walkthrough** to an ephemeral markdown artifact (plus a card-based HTML companion of the same content), and then stands by: the human reviews at their own pace in their IDE or diff viewer, and asks the agent questions only when they hit ambiguities, tricky logic, or suspected bugs. Consult [`references/review-rubric.md`](references/review-rubric.md) for layering heuristics, risk-hypothesis formulas, investigation templates, and HTML content-shaping rules. Consult [`references/html-walkthrough.md`](references/html-walkthrough.md) for the full HTML companion spec (design, wording, RTL, data contract, editor links).
 
 ---
 
@@ -67,7 +68,7 @@ Remain portable across harnesses while exploiting graph-based code intelligence 
 
 ### 4. Generate the Review Walkthrough
 
-Write the complete walkthrough as a single markdown artifact. **One shot** — do not page it through chat.
+Write the complete walkthrough as a single markdown artifact. **One shot** — do not page it through chat. Then generate the HTML companion (Section 4d) from that finished markdown.
 
 #### 4a. Resolve the Storage Path (Ephemeral, Never Git-Tracked)
 
@@ -77,11 +78,13 @@ The walkthrough is a disposable draft. It must never be committed and never live
 2. **Repository temp directory:** a local scratch directory (e.g., `tmp/`, `.tmp/`), but only after verifying with `git check-ignore` that it is excluded from tracking.
 3. **System temp directory (final fallback):** e.g., `/tmp/review-walkthrough-<branch>-<timestamp>.md` on Unix.
 
-Report the resolved absolute path to the user so they can open it directly in their editor.
+The HTML companion lives in the same directory with the same basename and a `.html` extension. Report the resolved absolute path(s) to the user so they can open them directly.
 
 #### 4b. Tone & Style Guidelines (Anti-Fatigue)
 
-- **Language Adaptation & Localization:** Always write the review walkthrough in the user's active conversation language (the language used in their prompt).
+These rules govern the **markdown** walkthrough. The HTML companion keeps the same facts but follows its own register rules (see `references/html-walkthrough.md`, "Language & wording").
+
+- **Language Adaptation & Localization:** Always write the review walkthrough in the language of the user's first prompt (the one that triggered this skill). Detect it once and use it for every artifact, including the HTML companion, even if later messages switch language.
   - **Full Document Localization:** Translate all structural section headings, title prefixes, and metadata labels into the active language (`# Review Walkthrough:` → `# راهنمای بررسی:`, `**Affects:**` → `**بخش‌های تحت‌تأثیر:**`, `### The Gist` → `### خلاصه تغییرات`, `### Heads Up` → `### نکات حساس و ریسک‌ها`, `### Suggested Reading Order` → `### ترتیب پیشنهادی بررسی`, `*Skim:*` → `*بررسی گذرا:*`, `### What to Test` → `### مواردی که باید تست شوند`).
   - **No Bilingual Tagging:** Write pure native titles. Never retain hardcoded English headings or append English duplicates in parentheses (e.g., do NOT write `### Heads Up (نکات...)` or `### ترتیب بررسی (Suggested Reading Order)` or `**Affects:**`).
   - **RTL Layout Preservation:** In Right-to-Left (RTL) languages (Persian, Arabic, Hebrew), every line, heading, list item, and metadata label must start with a native RTL word so that markdown renderers resolve the paragraph direction to RTL. Starting lines with English words breaks text alignment and flips punctuation.
@@ -139,16 +142,43 @@ Render all section titles and labels in the active conversation language (see re
 
 **Do not include:** paged diff hunks, lint/formatting nits, generic checklist questions ("is this secure?"), or pass/fail approval badges.
 
+#### 4d. Generate the HTML Companion
+
+After the markdown is written, generate a self-contained, card-based **HTML companion**: one card per step, light/dark theme following the OS, full RTL support, and every `file:line` reference opening the user's editor (VS Code by default).
+
+Generate it by default. Skip it only when the user asks for markdown only or says they don't want HTML.
+
+1. **Read the spec first.** Read [`references/html-walkthrough.md`](references/html-walkthrough.md) in full before generating anything. It is authoritative for design tokens, wording and register, fonts, RTL rules, the JSON data contract, editor links, and verification. Do not work from memory.
+2. **The markdown is the single source of truth.** Build the HTML data from the finished markdown walkthrough: same gotchas, same files, same order, same `file:line` anchors. Never add a claim the markdown does not make, and never drop one. Wording may be re-expressed in the HTML's register; facts may not change. Apply the content-shaping rules in `references/review-rubric.md` (Section 4).
+3. **Map sections to steps:**
+
+   | Markdown section | HTML step (`kind`) |
+   | :--- | :--- |
+   | Header & Quick Scope + The Gist | `scope` (always first) |
+   | Split Recommendation | `split` (only when the markdown has one) |
+   | Each Heads Up bullet | one `gotcha` step each |
+   | Suggested Reading Order + Skim line | one `reading` step |
+   | What to Test | one `test` step |
+
+4. **Fill `repo`.** Run `git rev-parse --show-toplevel` in the reviewed checkout (use the worktree path if the review ran in a git worktree) for `repo.root`. Never guess it; omit it if git cannot provide it. Default `repo.editor` to `vscode` unless the user named another editor.
+5. **Write only the data.** Copy `assets/walkthrough-template.html` from this skill folder and replace only the contents of the `<script type="application/json" id="walkthrough-data">` block (the template ships with an empty `{}`). Never edit the template's markup, CSS, JS, or embedded fonts. If the template is missing, skip the HTML and say so in the briefing.
+6. **Validate before writing.** Check the JSON against the validation rules in the spec. Write the file to the same directory and basename as the markdown, with `.html`.
+7. **Verify what you can.** Run the verification checklist in the spec as far as the environment allows. List the checks you could not run in the chat briefing instead of claiming them.
+8. **Fail safe.** If the HTML cannot be produced correctly (validation fails, or the template is missing), do not ship a half-built or fallback-font file. The markdown remains the deliverable; say in the briefing that the HTML was skipped and why.
+
+The HTML uses the same language as the markdown (the first prompt's language) and declares it in the JSON `lang` field. The template has built-in UI strings for English and Persian and sets direction and font automatically; for any other language, supply a complete `ui` object (see the spec's "Other languages" section).
+
 ---
 
 ### 5. Chat Briefing
 
-After writing the walkthrough, reply concisely in the user's conversation language (3–5 lines max):
+After writing the walkthrough, reply concisely in the walkthrough language (3–6 lines max):
 
-- The absolute path to the review walkthrough artifact.
+- The absolute path to the review walkthrough artifact, and to the HTML companion when one was generated (or one line saying it was skipped and why).
 - A 1-line recap of the branch and diff size.
 - The split recommendation, if one was issued.
 - The top 2 gotchas from the walkthrough in one line each.
+- Any HTML verification checks that could not be run.
 
 Then stop. Do not walk through steps, do not ask the user to type `next`.
 
@@ -158,7 +188,7 @@ Then stop. Do not walk through steps, do not ask the user to type `next`.
 
 The human drives pacing. The agent answers questions and otherwise stays out of the way.
 
-- **Staleness check:** if the user mentions pushing, amending, or rebasing — or a long gap has passed — re-run `git rev-parse HEAD` and compare to the pinned commit. If it changed, flag it and offer to re-diff and regenerate the walkthrough rather than answering against stale content.
+- **Staleness check:** if the user mentions pushing, amending, or rebasing — or a long gap has passed — re-run `git rev-parse HEAD` and compare to the pinned commit. If it changed, flag it and offer to re-diff and regenerate the walkthrough (markdown and HTML together) rather than answering against stale content. Editor links open the working tree, so after a HEAD change their line numbers may no longer match.
 - **Concern logging:** silently record substantive concerns, todos, and open questions raised during the conversation. Never rely on reconstructing them from scrollback later. The log feeds Section 7.
 - **Answering technical questions** (e.g., *"In Layer 2, does `processOrder` handle concurrent duplicate requests?"*):
   - Investigate neutrally: read the target code, trace real execution paths and callers, and evaluate **both hypotheses** — what protections exist *and* what edge cases could defeat them.

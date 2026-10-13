@@ -81,6 +81,7 @@ Classifies text by the deliverable rather than the prompt's conversational tone:
 * **Zero-Width Non-Joiner (ZWNJ / نیم‌فاصله):** Enforced across verb prefixes (`می‌ـ`), plural markers (`ـ‌ها`), comparatives (`ـ‌تر/ـ‌ترین`), compound nouns (`نرم‌افزار`), and clitics.
 * **Persian Glyphs:** Strictly uses Persian `ی` and `ک` (rejects Arabic `ي` and `ك`). Standardizes on `ه‌ی` for ezafe on silent `ه`.
 * **Punctuation & Quotes:** Persian guillemets (`«...»`), Persian question marks (`؟`), and commas (`،`) with standard typographical spacing.
+* **Directional Arrows & Flow:** Enforces leftwards arrow `←` (`U+2190`) for progression and sequential flows in Persian RTL reading order (e.g. `مرحله ۱ ← مرحله ۲`, `لایه پایه ← لایه واسط`). Rejects rightwards arrow `→` in RTL flows as it points backwards to preceding steps.
 
 ---
 

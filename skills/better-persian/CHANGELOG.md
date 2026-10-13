@@ -7,6 +7,11 @@ Each release is tagged `better-persian-v<version>` and published on the [Release
 
 ---
 
+## [1.2.0] - 2026-10-12
+
+### Added
+- **Directional Arrows & Flow rule:** Explicitly mandates leftwards arrow `←` (`U+2190`) for progression and sequential flows in RTL (Persian) text, banning rightwards arrow `→` which points backwards to preceding steps in right-to-left reading order.
+
 ## [1.1.0] - 2026-10-04
 
 Refactored and compressed specification for always-on agent context compatibility with zero conversational friction.

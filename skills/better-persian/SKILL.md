@@ -5,7 +5,7 @@ license: MIT
 compatibility: "Any agent that reads Markdown skills"
 metadata:
   author: SMhd
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 # Better Persian
@@ -38,6 +38,7 @@ Determine register strictly from the deliverable, never from the user's conversa
 * **ZWNJ (نیم‌فاصله - U+200C):** Enforce in prefixes (`می‌شود`, `نمی‌دانم`), plurals (`کتاب‌ها`, `فایل‌ها`), comparatives (`بزرگ‌تر`, `سریع‌ترین`), prefixes (`بی‌دقت`, `هم‌زمان`), compounds (`وب‌سایت`, `نرم‌افزار`), and suffixes (`خانه‌ام`, `پروژه‌ی من`).
 * **Persian Glyphs:** Strictly use Persian `ی` (`U+06CC`) and `ک` (`U+06A9`) — never Arabic `ي` or `ك`. Standardize ezafe on silent `ه` as `ه‌ی` (`پروژه‌ی جدید`).
 * **Numerals & Quotes:** Use Persian numerals (`۰-۹`) for body text, dates, and amounts; keep Latin digits (`0-9`) for code, URLs, and versions. Use Persian guillemets `«...»` (never `"..."`). Attach `،` and `؟` to the preceding word without space, followed by one space.
+* **Directional Arrows & Flow:** In RTL (Persian) text, progression and process flows go from right to left. Use leftwards arrow `←` (`U+2190`) for progression (e.g. `مرحله ۱ ← مرحله ۲`, `لایه پایه ← لایه واسط`). Never use rightwards arrow `→` in RTL flows as it points backwards to the preceding step.
 
 ## 5. Factual Integrity
 Never invent metrics, customer counts, or partner names. Use explicit placeholders (e.g. `[تعداد کاربران]`) if data is missing.

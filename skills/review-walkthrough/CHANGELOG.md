@@ -7,6 +7,13 @@ Each release is tagged `review-walkthrough-v<version>` and published on the [Rel
 
 ---
 
+## [3.3.0] - 2026-10-13
+
+### Changed
+- **Deep Walkthrough Compiler module:** Consolidated the end-to-end compilation lifecycle into `compile_walkthrough()` inside `walkthrough_generator.py`. Encapsulates input loading, Git context enrichment, diff path resolution, schema validation, Markdown compilation, HTML companion template injection, and atomic file emission behind a single clean in-process seam.
+- **Refactored CLI adapter & legacy shim:** Reduced `build-walkthrough.py` to a thin CLI adapter and simplified `build-html.py` to invoke the compiler directly in-process, eliminating child process spawning.
+- **In-process unit test suite:** Added comprehensive in-memory compiler tests in `test_generator.py`.
+
 ## [3.2.0] - 2026-10-13
 
 ### Changed

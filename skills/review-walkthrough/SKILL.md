@@ -5,7 +5,7 @@ license: MIT
 compatibility: "git >= 2.0"
 metadata:
   author: SMhd
-  version: "3.2.0"
+  version: "3.3.0"
   tags:
     - git
     - code-review

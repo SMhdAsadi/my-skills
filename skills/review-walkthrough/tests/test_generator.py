@@ -14,7 +14,12 @@ from walkthrough_generator import (
     render_markdown,
     render_html,
     resolve_paths_against_diff,
+    compile_walkthrough,
+    CompileResult,
+    CompileError,
 )
+from walkthrough_schema import ValidationError
+
 
 
 class TestWalkthroughGenerator(unittest.TestCase):
@@ -278,6 +283,47 @@ class TestWalkthroughGenerator(unittest.TestCase):
         self.assertNotIn("احراز هویت → لایه نشست", md)
         self.assertIn("مسیر درخواست ← قفل همزمانی", md)
         self.assertNotIn("مسیر درخواست → قفل همزمانی", md)
+
+    def test_compile_walkthrough_in_memory(self):
+        result = compile_walkthrough(self.sample_data_en, write_files=False)
+        self.assertIsInstance(result, CompileResult)
+        self.assertIn("# Review Walkthrough: Token Refresh Flow", result.markdown)
+        self.assertIn('<script type="application/json" id="walkthrough-data">', result.html)
+        self.assertIn('"Token Refresh Flow"', result.html)
+        self.assertEqual(result.stats["steps"], 4)
+        self.assertEqual(result.stats["gotchas"], 1)
+        self.assertEqual(result.stats["reading_items"], 2)
+        self.assertGreaterEqual(result.elapsed_ms, 0.0)
+        self.assertIsNone(result.md_path)
+        self.assertIsNone(result.html_path)
+
+    def test_compile_walkthrough_writes_files(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            json_path = Path(tmpdir) / "walkthrough.json"
+            json_path.write_text(json.dumps(self.sample_data_en), encoding="utf-8")
+
+            result = compile_walkthrough(json_path, out_dir=tmpdir)
+            self.assertIsNotNone(result.md_path)
+            self.assertIsNotNone(result.html_path)
+            self.assertTrue(result.md_path.exists())
+            self.assertTrue(result.html_path.exists())
+            self.assertIn("Token Refresh Flow", result.md_path.read_text(encoding="utf-8"))
+            self.assertIn("walkthrough-data", result.html_path.read_text(encoding="utf-8"))
+
+    def test_compile_walkthrough_with_diff_files(self):
+        spec = copy.deepcopy(self.sample_data_en)
+        spec["steps"][1]["refs"] = [{"path": "token.ts", "startLine": 42}]
+        diff_files = ["src/auth/token.ts", "README.md"]
+        result = compile_walkthrough(spec, diff_files=diff_files, write_files=False)
+        self.assertEqual(result.data["steps"][1]["refs"][0]["path"], "src/auth/token.ts")
+
+    def test_compile_walkthrough_raises_on_invalid_schema(self):
+        with self.assertRaises(ValidationError):
+            compile_walkthrough({"schemaVersion": 2, "meta": {}}, write_files=False)
+
+    def test_compile_walkthrough_raises_on_missing_file(self):
+        with self.assertRaises(CompileError):
+            compile_walkthrough("/non/existent/path/walkthrough.json", write_files=False)
 
 
 if __name__ == "__main__":

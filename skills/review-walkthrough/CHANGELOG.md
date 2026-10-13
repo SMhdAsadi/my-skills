@@ -7,6 +7,30 @@ Each release is tagged `review-walkthrough-v<version>` and published on the [Rel
 
 ---
 
+## [3.2.0] - 2026-10-13
+
+### Changed
+- **Interactive checklist for test step:** Upgraded "What to test" verification scenarios to interactive checkboxes in both Markdown and HTML companion:
+  - In Markdown (`review-walkthrough.md`), test items are now rendered as GitHub/GitLab task list checkboxes (`- [ ] <scenario>`) instead of plain unordered bullets (`- <scenario>`).
+  - In HTML companion (`review-walkthrough.html`), test items now render with native `<input type="checkbox">` elements, clickable labels, and persistent state saved to `localStorage` under key `review-walkthrough-test:<headSha>`.
+
+## [3.1.0] - 2026-10-12
+
+### Added
+- **Android Studio & GoLand support:** Added dedicated choices to the top-bar IDE switcher in the HTML companion:
+  - **Android Studio** (`android-studio`): Opens files via `idea://open?file=...&line=...` (the native URL scheme registered by Android Studio for stack traces and deep linking).
+  - **GoLand** (`goland`): Opens files via `goland://open?file=...&line=...`.
+- **Expanded schema validation & CLI flags:** Added `android-studio`, `studio`, and `goland` to `VALID_EDITORS` in `walkthrough_schema.py` and CLI choices in `build-walkthrough.py`.
+
+### Fixed
+- **RTL arrow directions (Persian/Arabic):** Fixed progression arrow direction issues across RTL deliverables:
+  - In `walkthrough-template.html`, the branch header arrow now renders direction-aware (`R ? '←' : '→'`), pointing inline-end from feature branch (right) toward base branch (left) instead of pointing backwards to the right.
+  - In `walkthrough-template.html` (`rich()`, `document.title`, and progress step labels), textual progression arrows (`→`, `➔`, `➜`, `->`) outside code spans are automatically normalized to leftwards arrows (`←` / `U+2190`) under `dir="rtl"`.
+  - In `walkthrough_generator.py`, added `fix_rtl_arrows()` to normalize rightwards progression arrows outside backticks to leftwards arrows (`←`) in Markdown for RTL languages.
+  - In `SKILL.md` and reference rubrics, updated Persian reading order examples to use leftwards arrows (`←`) and documented the RTL directional progression rule.
+
+---
+
 ## [3.0.0] - 2026-10-11
 
 ### Added

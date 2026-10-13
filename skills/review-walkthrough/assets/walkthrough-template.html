@@ -108,8 +108,8 @@ svg{flex:none}
 <script>
 (()=>{
 const NS='http://www.w3.org/2000/svg';
-const EDITORS=['vscode','cursor','windsurf','zed','idea','copy'];
-const ED_LABELS={vscode:'VS Code',cursor:'Cursor',windsurf:'Windsurf',zed:'Zed',idea:'JetBrains',copy:'Copy Only'};
+const EDITORS=['vscode','cursor','windsurf','zed','android-studio','goland','idea','copy'];
+const ED_LABELS={vscode:'VS Code',cursor:'Cursor',windsurf:'Windsurf',zed:'Zed','android-studio':'Android Studio',goland:'GoLand',idea:'JetBrains',copy:'Copy Only'};
 const I={en:{step:'Step',of:'of',scope:'Scope',branch:'Branch',split:'Split recommendation',gist:'The gist',affects:'Affects',heads:'Heads up',check:'Check',reading:'Suggested reading order',skim:'Skim',test:'What to test',text:'Text version',prev:'Previous',next:'Next',theme:'Theme',sys:'System',light:'Light',dark:'Dark',open:'Open in editor',copy:'Copy path',copied:'Copied!',deleted:'Deleted',invalid:'Invalid walkthrough data',files:'files',foot:'Line numbers refer to commit {sha}; links open your current working tree.',nav:'Walkthrough steps',cat:{'edge-case':'Edge case',state:'State and re-render',layout:'Layout and styling',concurrency:'Concurrency and ordering',persistence:'Persistence and reset',other:'Other'}},
 fa:{step:'گام',of:'از',scope:'دامنه',branch:'برنچ',split:'پیشنهاد تفکیک برنچ',gist:'خلاصه تغییرات',affects:'بخش‌های تحت‌تأثیر',heads:'نکتهٔ',check:'بررسی کنید',reading:'ترتیب پیشنهادی بررسی',skim:'بررسی گذرا',test:'مواردی که باید تست شوند',text:'نسخهٔ متنی',prev:'قبلی',next:'بعدی',theme:'پوسته',sys:'خودکار',light:'روشن',dark:'تیره',open:'باز کردن در ویرایشگر',copy:'کپی مسیر',copied:'کپی شد!',deleted:'حذف‌شده',invalid:'داده‌های راهنما نامعتبر است',files:'فایل',foot:'شمارهٔ خط‌ها به کامیت {sha} اشاره می‌کنند و فایل‌ها از working tree فعلی باز می‌شوند.',nav:'گام‌های راهنما',cat:{'edge-case':'حالت مرزی',state:'State و re-render',layout:'چیدمان و استایل',concurrency:'همزمانی و ترتیب اجرا',persistence:'ماندگاری و بازنشانی',other:'سایر'}}};
 
@@ -129,7 +129,7 @@ function rich(s){
   if(!p)return;
   if(p[0]==='`'&&p.length>2)o.push(h('code',{dir:'ltr',text:p.slice(1,-1)}));
   else if(p.startsWith('**')&&p.length>4)o.push(h('strong',null,rich(p.slice(2,-2))));
-  else if(R)p.split(LAT).forEach((q,j)=>{if(q)o.push(j%2?h('bdi',{text:q}):q)});
+  else if(R){const t=p.replace(/[→➔➜]|->/g,'←');t.split(LAT).forEach((q,j)=>{if(q)o.push(j%2?h('bdi',{text:q}):q)})}
   else o.push(p)
  });return o}
 
@@ -165,7 +165,8 @@ function editorUrl(r,ed){
  let b=o.root.replace(/\\/g,'/').replace(/\/+$/,'');if(!b.startsWith('/')&&!/^[A-Za-z]:/.test(b))b='/'+b;
  const enc=s=>s.split('/').map(p=>/^[A-Za-z]:$/.test(p)?p:encodeURIComponent(p)).join('/');
  const full=(b.startsWith('/')?'':'/')+enc(b)+'/'+enc(r.path);
- if(ed==='idea')return'idea://open?file='+encodeURIComponent(b+'/'+r.path)+'&line='+r.startLine;
+ if(ed==='idea'||ed==='android-studio'||ed==='studio')return'idea://open?file='+encodeURIComponent(b+'/'+r.path)+'&line='+r.startLine;
+ if(ed==='goland'||ed==='webstorm'||ed==='pycharm')return ed+'://open?file='+encodeURIComponent(b+'/'+r.path)+'&line='+r.startLine;
  if(ed==='zed')return'zed://file'+full+':'+r.startLine;
  const pre=o.remote?ed+'://vscode-remote/'+o.remote:ed+'://file';
  return pre+full+':'+r.startLine}
@@ -201,8 +202,13 @@ reading:x=>{
   const cb=h('input',{type:'checkbox',id:'c'+i});cb.checked=sv.includes(i);
   cb.onchange=()=>{const a=[...ul.querySelectorAll('input')].flatMap((c,j)=>c.checked?[j]:[]);try{localStorage.setItem(key,JSON.stringify(a))}catch(e){}};
   return h('li',null,cb,h('div',null,h('div',{class:'role-row'},h('label',{for:'c'+i},h('strong',null,rich(it.role))),refPill(it)),P1(it.summary)))}));
- return[T(x),ul,x.skim&&x.skim.length?h('p',{class:'mut'},S.skim+': ',x.skim.flatMap((p,i)=>[i?(R?'، ':', '):null,h('code',{dir:'ltr',text:p})])):null]},
-test:x=>[T(x),h('ul',{class:'pl'},x.items.map(t=>h('li',null,rich(t))))]};
+test:x=>{
+ const key='review-walkthrough-test:'+D.meta.headSha;let sv=[];try{sv=JSON.parse(localStorage.getItem(key))||[]}catch(e){}
+ const ul=h('ul',{class:'chk'+(x.items.length>6?' chk-list':'')},x.items.map((t,i)=>{
+  const cb=h('input',{type:'checkbox',id:'t'+i});cb.checked=sv.includes(i);
+  cb.onchange=()=>{const a=[...ul.querySelectorAll('input')].flatMap((c,j)=>c.checked?[j]:[]);try{localStorage.setItem(key,JSON.stringify(a))}catch(e){}};
+  return h('li',null,cb,h('div',null,h('label',{for:'t'+i},rich(t))))}));
+ return[T(x),ul]}};
 
 function themeCtl(){let cur=null;try{cur=localStorage.getItem('rw-theme')}catch(e){}
  const g=h('div',{class:'seg',role:'group','aria-label':S.theme});
@@ -235,14 +241,14 @@ function updateAllLinks(){
 function fail(msg){setLang(D&&D.lang);app.replaceChildren(h('main',null,h('section',{class:'card'},h('h2',{text:S.invalid}),h('p',null,h('code',{dir:'ltr',text:String(msg)})))))}
 
 function build(){
- const m=D.meta,st=D.steps,tot=st.length,gt=st.filter(x=>x.kind==='gotcha').length;let gn=0;document.title=m.title;
+ const m=D.meta,st=D.steps,tot=st.length,gt=st.filter(x=>x.kind==='gotcha').length;let gn=0;document.title=R?m.title.replace(/[→➔➜]|->/g,'←'):m.title;
  CB={};st.forEach(x=>{(x.refs||[]).concat(x.items||[]).forEach(r=>{if(r&&r.path){const b=r.path.split('/').pop();CB[b]=(CB[b]||0)+1}})});
- try{const savedEd=localStorage.getItem('rw-editor');if(savedEd&&EDITORS.includes(savedEd))curEd=savedEd;else if(D.repo&&(D.repo.defaultEditor||D.repo.editor))curEd=D.repo.defaultEditor||D.repo.editor}catch(e){}
+ try{const savedEd=localStorage.getItem('rw-editor');if(savedEd&&EDITORS.includes(savedEd))curEd=savedEd;else if(savedEd==='studio')curEd='android-studio';else if(D.repo&&(D.repo.defaultEditor||D.repo.editor)){const dEd=D.repo.defaultEditor||D.repo.editor;curEd=dEd==='studio'?'android-studio':(EDITORS.includes(dEd)?dEd:curEd)}}catch(e){}
  const status=h('p',{class:'status','aria-live':'polite'});
- const prog=h('ol',{class:'prog','aria-label':S.nav},st.map((x,i)=>h('li',null,h('button',{type:'button','aria-label':f(i+1)+'. '+x.title}))));
+ const prog=h('ol',{class:'prog','aria-label':S.nav},st.map((x,i)=>h('li',null,h('button',{type:'button','aria-label':f(i+1)+'. '+(R?x.title.replace(/[→➔➜]|->/g,'←'):x.title)}))));
  const cards=st.map(x=>{const c=h('section',{class:'card',id:'s-'+x.id,hidden:true},B[x.kind](x,++gn,gt));if(x.kind!=='gotcha')gn--;return c});
  const top=h('header',null,h('div',{class:'row'},h('h1',null,rich(m.title)),h('div',{class:'actions'},editorCtl(),themeCtl())),
-  h('div',{class:'branch'},h('span',{text:S.branch+': '}),h('code',{class:'tag',dir:'ltr',text:m.branch}),h('span',{class:'arr',text:'→'}),h('code',{class:'tag',dir:'ltr',text:m.base})),
+  h('div',{class:'branch'},h('span',{text:S.branch+': '}),h('code',{class:'tag',dir:'ltr',text:m.branch}),h('span',{class:'arr',text:R?'←':'→'}),h('code',{class:'tag',dir:'ltr',text:m.base})),
   h('p',{class:'stats'},f(m.stats.files)+' '+S.files+' · ',h('bdi',{dir:'ltr',class:'add',text:'+'+m.stats.added}),' / ',h('bdi',{dir:'ltr',class:'del',text:'−'+m.stats.removed})),prog,status);
  const pv=h('button',{class:'btn',type:'button',title:S.prev},icon('prev','dir-icon'),S.prev),nx=h('button',{class:'btn pri',type:'button',title:S.next},S.next,icon('next','dir-icon'));
  const [fa,fb]=S.foot.split('{sha}');

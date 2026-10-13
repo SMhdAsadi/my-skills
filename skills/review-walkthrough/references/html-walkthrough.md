@@ -41,7 +41,7 @@ Authoritative spec for the HTML companion that `review-walkthrough` generates ne
   },
   "repo": {
     "root":          absolute path of the working tree on this machine (see Section 3).
-    "defaultEditor": "vscode" (default) | "cursor" | "windsurf" | "zed" | "idea" | "copy"
+    "defaultEditor": "vscode" (default) | "cursor" | "windsurf" | "zed" | "android-studio" | "goland" | "idea" | "copy"
   },
   "steps": [ ...in display order... ]
 }
@@ -99,7 +99,8 @@ A gotcha without `body` or without at least one ref is invalid. No severity, fix
 "skim":  optional array of bare repo-relative paths
 ```
 The reading card's `title` is synthesized as `Read in order: role1 → role2 …`
-(or the localized equivalent), never a copy of the first item.
+(or the localized equivalent: in RTL languages such as Persian, progression flows right-to-left, so use leftwards arrow `←`, e.g. `ترتیب بررسی: نقش ۱ ← نقش ۲ …`),
+never a copy of the first item.
 
 ### `test` (exactly one, always last)
 ```
@@ -112,7 +113,7 @@ or the localized equivalent) — never words copied from the items.
 - Order: `scope`, `split`?, `gotcha` × 2–4, `reading`, `test`.
 - `id` values are unique. Strings contain no raw HTML.
 - Persian text follows Section 4. Identifiers, paths, and branch names are never translated.
-- Checklist state of the reading step is a viewer convenience only (Section 8); it is never stored in the JSON.
+- Checklist state of the reading and test steps is a viewer convenience only (Section 8); it is never stored in the JSON.
 
 ### Example (shortened)
 ```json
@@ -185,6 +186,8 @@ The HTML header includes an editor selector dropdown allowing reviewers to choos
 - **Cursor** (`cursor`)
 - **Windsurf** (`windsurf`)
 - **Zed** (`zed`)
+- **Android Studio** (`android-studio`)
+- **GoLand** (`goland`)
 - **JetBrains / IntelliJ** (`idea`)
 - **Copy Only** (`copy`)
 
@@ -196,7 +199,9 @@ The selected editor is saved across sessions in `localStorage["rw-editor"]`. Ini
   Example: `vscode://file/Users/me/app/src/PostDetailsTopBar.tsx:37`
 - **Zed:**
   `zed://file/{root}/{path}:{startLine}`
-- **JetBrains:**
+- **GoLand:**
+  `goland://open?file={root}/{path}&line={startLine}`
+- **Android Studio / JetBrains (IntelliJ):**
   `idea://open?file={root}/{path}&line={startLine}`
 - **Copy Only:**
   Clicking the link copies the relative path to clipboard and shows copied feedback without opening a URL handler.
@@ -288,9 +293,10 @@ The template delivers an ultra-lean footprint (~23.7 KB total file size) with ze
 - The theme toggle sits at `inset-inline-end` of the top corner.
 
 ### Arrows and icons
-- Never use text arrows (← →) in labels. Use inline SVG chevrons.
+- Never use text arrows (← →) in button labels. Use inline SVG chevrons.
 - A chevron follows reading direction: Next points toward inline-end (LEFT in RTL), Previous toward inline-start (RIGHT in RTL). Draw icons for LTR and add `[dir="rtl"] .dir-icon { transform: scaleX(-1); }`.
 - The icon sits after the text in Next and before the text in Previous.
+- Directional flow in RTL: In RTL text and headers, progression flows right-to-left. Any textual progression arrow must point leftwards (`←` / `U+2190`), e.g. `نقش ۱ ← نقش ۲` or `branch ← base` in the branch line where the feature branch sits on the right and merges into the base branch on the left. The HTML companion template automatically normalizes rightwards progression arrows (`→`, `➔`, `➜`, `->`) outside code blocks to `←` when `dir="rtl"`.
 - Keyboard: in RTL, ArrowLeft goes to the NEXT step and ArrowRight to the PREVIOUS step (reversed in LTR). Home goes to the first step, End to the last.
 
 ### Bidi (mixed Persian and Latin)
@@ -346,6 +352,7 @@ Tokens (names are fixed; values may move ±5% lightness, never hue):
 - Page header: `meta.title`, then a branch line with each branch as a tag (`from-tag → to-tag`), then a stats line (`N files · +added (green) / −removed (red)`), the IDE selector dropdown, then «گام ۲ از ۷» with the current `section`.
 - Gotcha card, top to bottom: quiet category label with a `--warn` dot and counter («نکتهٔ ۱ از ۳ · حالت مرزی»), title, pure human prose body, reference pill row with deep links and 1-click copy buttons, optional `extra`, optional «بررسی کنید» callout.
 - Reading step: a native `<input type="checkbox">` list, one item per file (role in weight 600, summary, then the editor link with copy button). Checkbox inputs are unblocked from card key traps so reviewers can toggle them using Space. For lists with >6 files, `.chk-list` enables a clean vertical scroll area. Checked state is saved per `headSha` in `localStorage` (key `review-walkthrough:<headSha>`). The `skim` line follows the list as plain muted text.
+- Test step: a native `<input type="checkbox">` list (`ul.chk`), one item per verification scenario with clickable labels. Checked state is saved per `headSha` in `localStorage` (key `review-walkthrough-test:<headSha>`).
 - Progress: a thin segmented bar (one segment per step) with a 24px touch target per segment, filling from inline-start. No dot row.
 - Buttons: Previous is ghost, Next is solid `--accent`, same height, one SVG chevron each as in Section 6. No `<kbd>` hints — arrow keys still work and are documented in the button tooltip.
 - Inline code: monospace with a subtle `--code-bg` tint, no border. Branch names use the same tag style.

@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import subprocess
@@ -174,7 +175,7 @@ class TestWalkthroughGenerator(unittest.TestCase):
         )
         self.assertIn("*Skim: `README.md`*", md)
         self.assertIn("### What to Test", md)
-        self.assertIn("- Test token expiry with expired JWT.", md)
+        self.assertIn("- [ ] Test token expiry with expired JWT.", md)
 
     def test_render_markdown_persian(self):
         md = render_markdown(self.sample_data_fa)
@@ -185,6 +186,7 @@ class TestWalkthroughGenerator(unittest.TestCase):
         self.assertIn("### نکات حساس و ریسک‌ها", md)
         self.assertIn("### ترتیب پیشنهادی بررسی", md)
         self.assertIn("### مواردی که باید تست شوند", md)
+        self.assertIn("- [ ] تست انقضای توکن با JWT منقضی.", md)
         self.assertIn("*بررسی گذرا: `README.md`*", md)
 
     def test_render_html_inlines_json(self):
@@ -247,6 +249,35 @@ class TestWalkthroughGenerator(unittest.TestCase):
             )
             self.assertEqual(res.returncode, 0, f"Shim failed: {res.stderr}")
             self.assertTrue(out_html.exists(), "Shim did not produce HTML output")
+
+    def test_fix_rtl_arrows_helper(self):
+        from walkthrough_generator import fix_rtl_arrows
+
+        # RTL should normalize rightwards arrows outside backticks to leftwards
+        self.assertEqual(
+            fix_rtl_arrows("ترتیب بررسی: بخش اول → بخش دوم -> بخش سوم ➔ بخش چهارم", is_rtl=True),
+            "ترتیب بررسی: بخش اول ← بخش دوم ← بخش سوم ← بخش چهارم",
+        )
+        # Inline code with backticks should be preserved
+        self.assertEqual(
+            fix_rtl_arrows("بررسی تابع `a -> b` و مدل داده → کنترلر", is_rtl=True),
+            "بررسی تابع `a -> b` و مدل داده ← کنترلر",
+        )
+        # When is_rtl=False, text should be untouched
+        self.assertEqual(
+            fix_rtl_arrows("Read in order: A → B -> C", is_rtl=False),
+            "Read in order: A → B -> C",
+        )
+
+    def test_render_markdown_persian_normalizes_arrows(self):
+        data = copy.deepcopy(self.sample_data_fa)
+        data["meta"]["title"] = "مدیریت توکن: احراز هویت → لایه نشست"
+        data["steps"][1]["title"] = "مسیر درخواست → قفل همزمانی"
+        md = render_markdown(data)
+        self.assertIn("مدیریت توکن: احراز هویت ← لایه نشست", md)
+        self.assertNotIn("احراز هویت → لایه نشست", md)
+        self.assertIn("مسیر درخواست ← قفل همزمانی", md)
+        self.assertNotIn("مسیر درخواست → قفل همزمانی", md)
 
 
 if __name__ == "__main__":

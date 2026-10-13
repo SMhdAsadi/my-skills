@@ -4,7 +4,7 @@
 Usage:
     python3 build-walkthrough.py <walkthrough.json> [--out-dir <dir>]
         [--md <walkthrough.md>] [--html <walkthrough.html>]
-        [--editor vscode|cursor|windsurf|zed|idea|webstorm|pycharm|copy]
+        [--editor vscode|cursor|windsurf|zed|android-studio|goland|idea|webstorm|pycharm|copy]
         [--lang fa|en|de|es] [--template <template.html>]
 
 The JSON file is the single source of truth. Both Markdown and HTML are rendered

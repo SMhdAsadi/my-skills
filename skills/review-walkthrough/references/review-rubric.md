@@ -92,7 +92,7 @@ The walkthrough is authored JSON-first (`review-walkthrough.json`), from which b
 
 ### 4b. Card Budget (Anti-Fatigue)
 - Every card must read without scrolling on a phone-sized viewport (about 375×667) at normal text size.
-- Step title: one sentence, at most 160 characters (scope = diff shape, reading = `Read in order: role1 → role2 …`, test = generic count-based line). Never copy item text into a title.
+- Step title: one sentence, at most 160 characters (scope = diff shape, reading = `Read in order: role1 → role2 …` or in RTL `ترتیب بررسی: نقش ۱ ← نقش ۲ …`, test = generic count-based line). Never copy item text into a title.
 - Gotcha body: 1 to 2 sentences, full text, never truncated. `lookFor`: at most 1 sentence. `extra`: at most 1 short paragraph, only for a real edge case.
 - Gotchas: 1–4 (rule of thumb: 2–4).
 - Test items: 2–3, each one line, full text.

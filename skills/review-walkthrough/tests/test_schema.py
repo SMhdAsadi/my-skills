@@ -177,7 +177,7 @@ class TestWalkthroughSchema(unittest.TestCase):
         self.assertEqual(validated["steps"][1]["kind"], "split")
 
     def test_supports_new_ide_names(self):
-        for editor in ["vscode", "cursor", "windsurf", "zed", "idea", "webstorm", "pycharm", "copy"]:
+        for editor in ["vscode", "cursor", "windsurf", "zed", "android-studio", "studio", "goland", "idea", "webstorm", "pycharm", "copy"]:
             data = dict(self.valid_data)
             data["repo"] = {"root": "/root", "defaultEditor": editor}
             validated = validate_walkthrough(data)

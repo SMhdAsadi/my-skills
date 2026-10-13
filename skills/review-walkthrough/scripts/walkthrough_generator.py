@@ -122,9 +122,20 @@ def resolve_paths_against_diff(
     return data
 
 
+def fix_rtl_arrows(text: str, is_rtl: bool) -> str:
+    """Normalize progression arrows in RTL text from rightwards to leftwards outside code spans."""
+    if not is_rtl or not text:
+        return text
+    parts = re.split(r"(`[^`]+`)", text)
+    for i in range(0, len(parts), 2):
+        parts[i] = re.sub(r"[→➔➜]|->", "←", parts[i])
+    return "".join(parts)
+
+
 def render_markdown(data: Dict[str, Any]) -> str:
     """Deterministically render a clean, anti-fatigue Markdown review walkthrough."""
     lang = data.get("lang", "en")
+    is_rtl = lang.lower().startswith(("fa", "ar", "he", "ur"))
     labels = get_labels(lang)
     meta = data["meta"]
     stats = meta["stats"]
@@ -153,30 +164,30 @@ def render_markdown(data: Dict[str, Any]) -> str:
     lines: List[str] = []
 
     # Title & Header
-    lines.append(f"# {labels['title_prefix']} {meta['title']}")
+    lines.append(f"# {labels['title_prefix']} {fix_rtl_arrows(meta['title'], is_rtl)}")
     lines.append("")
     lines.append(
         f"**{labels['branch']}** `{meta['branch']}` → `{meta['base']}` • "
         f"**{files_str} (+{stats['added']} / -{stats['removed']})**"
     )
-    lines.append(f"**{labels['affects']}** {scope.get('affects', '')}")
+    lines.append(f"**{labels['affects']}** {fix_rtl_arrows(scope.get('affects', ''), is_rtl)}")
     lines.append("")
 
     # Split Recommendation (if any)
     if split:
         lines.append(f"### {labels['split']}")
-        lines.append(split.get("recommendation", ""))
+        lines.append(fix_rtl_arrows(split.get("recommendation", ""), is_rtl))
         boundaries = split.get("boundaries")
         if boundaries:
             lines.append("")
             for b in boundaries:
-                lines.append(f"- {b}")
+                lines.append(f"- {fix_rtl_arrows(b, is_rtl)}")
         lines.append("")
 
     # The Gist
     lines.append(f"### {labels['gist']}")
     for g in scope.get("gist", []):
-        lines.append(g)
+        lines.append(fix_rtl_arrows(g, is_rtl))
     lines.append("")
 
     # Heads Up (Gotchas)
@@ -185,16 +196,21 @@ def render_markdown(data: Dict[str, Any]) -> str:
         refs = gotcha.get("refs", [])
         anchor = format_ref_anchor(refs[0]) if refs else ""
         anchor_part = f" {anchor}" if anchor else ""
-        lines.append(f"- **{gotcha['title']}**{anchor_part}: {gotcha['body']}")
+        g_title = fix_rtl_arrows(gotcha['title'], is_rtl)
+        g_body = fix_rtl_arrows(gotcha['body'], is_rtl)
+        lines.append(f"- **{g_title}**{anchor_part}: {g_body}")
         if gotcha.get("lookFor"):
-            lines.append(f"  - *{labels['check']} {gotcha['lookFor']}*")
+            look_for = fix_rtl_arrows(gotcha['lookFor'], is_rtl)
+            lines.append(f"  - *{labels['check']} {look_for}*")
     lines.append("")
 
     # Suggested Reading Order
     lines.append(f"### {labels['reading']}")
     for item in reading.get("items", []):
         anchor = format_ref_anchor(item)
-        lines.append(f"- [ ] **{item['role']}** {anchor}: {item['summary']}")
+        role = fix_rtl_arrows(item['role'], is_rtl)
+        summary = fix_rtl_arrows(item['summary'], is_rtl)
+        lines.append(f"- [ ] **{role}** {anchor}: {summary}")
 
     skim = reading.get("skim", [])
     if skim:
@@ -208,7 +224,7 @@ def render_markdown(data: Dict[str, Any]) -> str:
     # What to Test
     lines.append(f"### {labels['test']}")
     for t in test.get("items", []):
-        lines.append(f"- {t}")
+        lines.append(f"- [ ] {fix_rtl_arrows(t, is_rtl)}")
     lines.append("")
 
     return "\n".join(lines).strip() + "\n"

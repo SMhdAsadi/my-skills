@@ -5,7 +5,7 @@ license: MIT
 compatibility: "git >= 2.0"
 metadata:
   author: SMhd
-  version: "3.0.0"
+  version: "3.2.0"
   tags:
     - git
     - code-review
@@ -18,7 +18,7 @@ metadata:
 
 An **Anti-Fatigue Review Walkthrough Generator and On-Demand Review Co-Pilot** designed to help developers review code better and faster in their native IDE.
 
-Instead of dumping a wall of formal academic text or gating the review behind turn-by-turn chat steps, this skill analyzes the branch diff once, writes a structured JSON document (`review-walkthrough.json`), and executes `scripts/build-walkthrough.py` to deterministically generate both a lean, high-signal Markdown walkthrough and an interactive card-based HTML companion (with multi-IDE deep links for VS Code, Zed, and JetBrains, plus a 1-click Copy Path button). The reviewer reads at their own pace in their IDE, and asks the agent questions only when they hit ambiguities, tricky logic, or suspected bugs. Consult [`references/review-rubric.md`](references/review-rubric.md) for layering heuristics, risk-hypothesis formulas, and investigation templates. Consult [`references/html-walkthrough.md`](references/html-walkthrough.md) for the full JSON Schema v2 and HTML companion specification.
+Instead of dumping a wall of formal academic text or gating the review behind turn-by-turn chat steps, this skill analyzes the branch diff once, writes a structured JSON document (`review-walkthrough.json`), and executes `scripts/build-walkthrough.py` to deterministically generate both a lean, high-signal Markdown walkthrough and an interactive card-based HTML companion (with multi-IDE deep links for VS Code, Cursor, Windsurf, Zed, Android Studio, GoLand, and JetBrains, plus a 1-click Copy Path button). The reviewer reads at their own pace in their IDE, and asks the agent questions only when they hit ambiguities, tricky logic, or suspected bugs. Consult [`references/review-rubric.md`](references/review-rubric.md) for layering heuristics, risk-hypothesis formulas, and investigation templates. Consult [`references/html-walkthrough.md`](references/html-walkthrough.md) for the full JSON Schema v2 and HTML companion specification.
 
 ---
 
@@ -130,7 +130,7 @@ Write `review-walkthrough.json` following this structure:
       "id": "reading-order",
       "kind": "reading",
       "section": "ترتیب پیشنهادی بررسی",
-      "title": "ترتیب بررسی: لایه پایه → لایه واسط",
+      "title": "ترتیب بررسی: لایه پایه ← لایه واسط",
       "items": [
         {
           "role": "مدل داده",
@@ -159,6 +159,7 @@ Write `review-walkthrough.json` following this structure:
 - Steps order is strictly: `scope`, `split`? (only for massive diffs >15 files), `gotcha` × 1–4, `reading`, `test`.
 - Every gotcha requires 1–3 structured `refs` with repo-relative `path` and `startLine` (supports any file: `Dockerfile`, `.env`, `Makefile`, etc.).
 - Titles ≤160 characters.
+- **RTL directional arrows:** In RTL languages (e.g. Persian/Farsi), reading and process flows go strictly right-to-left. Always use leftwards arrow `←` (`U+2190`) for progression in titles and reading orders (e.g. `ترتیب بررسی: لایه پایه ← لایه واسط`). Never use rightwards arrow `→` in RTL flows as it points backwards to earlier steps.
 
 #### 4d. Deterministic Build (`build-walkthrough.py`)
 
@@ -172,7 +173,7 @@ The script:
 1. Validates the JSON against Schema v2.
 2. Enriches git metadata and resolves bare basenames against changed files in `git diff --name-only`.
 3. Deterministically renders `review-walkthrough.md` with localized headings and anchors.
-4. Deterministically renders `review-walkthrough.html` (~24 KB, multi-IDE selector for VS Code, Cursor, Windsurf, Zed, JetBrains, 1-click Copy Path, pure prose, and local Vazirmatn font support).
+4. Deterministically renders `review-walkthrough.html` (~24 KB, multi-IDE selector for VS Code, Cursor, Windsurf, Zed, Android Studio, GoLand, JetBrains, 1-click Copy Path, pure prose, and local Vazirmatn font support).
 5. Exits 0 and reports both file paths.
 
 ---

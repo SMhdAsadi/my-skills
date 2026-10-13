@@ -27,7 +27,7 @@ Interactive chat walkthroughs introduce problems of their own: turn-by-turn gati
 
 - **Lean Review Walkthrough**: A compact, structured markdown artifact (~40–60 lines) written to an ephemeral, never-git-tracked location, opened side-by-side with your editor. Zero fluff, zero academic pretense.
 - **HTML Companion**: The same walkthrough as a self-contained, presentation-style HTML file (~24 KB), one card per step. Follows your OS light/dark theme (One Light / One Dark Pro) with a manual icon override, green/red diff stats, branch tags, keyboard navigation, a checkable reading list, and zero external requests.
-- **Multi-IDE & 1-Click Copy**: Deep links for **VS Code**, **Cursor**, **Windsurf**, **Zed**, and **JetBrains** (`idea://`), selectable in the top bar and remembered across sessions. Dedicated 1-click Copy Path buttons (`path:line`) next to every reference pill for terminal or custom editors.
+- **Multi-IDE & 1-Click Copy**: Deep links for **VS Code**, **Cursor**, **Windsurf**, **Zed**, **Android Studio**, **GoLand**, and **JetBrains** (`idea://`), selectable in the top bar and remembered across sessions. Dedicated 1-click Copy Path buttons (`path:line`) next to every reference pill for terminal or custom editors.
 - **Full RTL & Persian Support**: Offline-first, lightweight font stack (`local("Vazirmatn")` + system UI fonts) scoped strictly to Persian (`lang="fa"`), direction-aware arrows and keyboard shortcuts, pure conversational prose, and isolated Latin identifiers so paths and flags never scramble.
 - **Language-Agnostic & Conversational**: Naturally matches the language of your prompt (German, Persian, Spanish, etc.) in a relaxed, punchy peer-to-peer developer voice, with fully localized headings/labels and RTL layout preservation while keeping technical code terms intact.
 - **Gotchas & Risks Upfront**: 1–4 line-anchored, practical edge cases right below the 2-sentence summary — spotting traps before you dive into the code.
@@ -66,7 +66,7 @@ Structured JSON (`review-walkthrough.json`) is the single source of truth; both 
 How it works:
 
 - The skill authors `review-walkthrough.json` and invokes `scripts/build-walkthrough.py`, which validates the JSON against Schema v2, enriches git metadata and paths against `git diff --name-only`, and compiles both `review-walkthrough.md` and `review-walkthrough.html`.
-- Editor links support VS Code, Cursor, Windsurf, Zed, and JetBrains (`idea://`), constructed from `git rev-parse --show-toplevel`. Reviewers can switch editors using the header dropdown or click Copy Path for terminal workflows.
+- Editor links support VS Code, Cursor, Windsurf, Zed, Android Studio, GoLand, and JetBrains (`idea://`), constructed from `git rev-parse --show-toplevel`. Reviewers can switch editors using the header dropdown or click Copy Path for terminal workflows.
 - The template (`assets/walkthrough-template.html`) is ultra-lean (~24 KB) and completely self-contained. Base64 font bloat has been removed in favor of `local("Vazirmatn")` and native system font stacks.
 - The full spec (design tokens, wording and RTL rules, JSON schema, editor links, verification) is in [`references/html-walkthrough.md`](references/html-walkthrough.md).
 

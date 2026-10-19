@@ -34,9 +34,11 @@ Interactive chat walkthroughs introduce problems of their own: turn-by-turn gati
 - **File-Grouped Reading Order**: Logical foundation-to-leaf reading sequence grouped by file with clickable links (no fragmented line-by-line bullets or clunky ASCII trees).
 - **Split Recommendation**: For oversized diffs, suggests splitting the PR before generating the walkthrough.
 - **Base Ref Pinning & Staleness Detection**: Pins `HEAD` at walkthrough generation time and re-checks it during review, offering to regenerate both files after a rebase or amend.
+- **Subagent Context Preservation**: In multi-agent harnesses (Tier S), offloads heavy diff inspection, JSON authoring, and compiler execution to an isolated Author Subagent, preserving >95% of context headroom for standby Q&A. Emergent deep questions dispatch discretionary Investigator Subagents.
+- **Persistent Review Concerns**: Tracks review findings, open questions, and agreed resolutions in `<storage-dir>/review-concerns.json`, providing a deterministic single source of truth across long sessions and compactions.
 - **Progressive Tooling**: Uses graph/structural MCP tools when available; degrades gracefully to git and grep when not.
-- **Anti-Bias Q&A**: Emergent questions are investigated under a both-hypotheses mandate (via a neutral research subagent where supported), never by confirming a predetermined answer.
-- **Zero Unsolicited Output**: No automatic sign-off recaps or PR comments — logged findings are compiled into a ready-to-post markdown block only on explicit request.
+- **Anti-Bias Q&A**: Emergent questions are investigated under a both-hypotheses mandate (via a neutral investigator subagent where supported), never by confirming a predetermined answer.
+- **Zero Unsolicited Output**: No automatic sign-off recaps or PR comments — logged findings in `review-concerns.json` are compiled into a ready-to-post markdown block only on explicit request.
 
 ---
 
@@ -76,17 +78,20 @@ How it works:
 
 ```mermaid
 flowchart TD
-    A[Inspect Git Diff & Pin HEAD] --> B[Split Assessment & Structural Analysis]
-    B --> C[Author Structured review-walkthrough.json]
+    A[Inspect Git Diff & Pin HEAD] -->|Tier S: Spawns Author Subagent| B[Diff & Structural Analysis]
+    B --> C[Author review-walkthrough.json & review-concerns.json]
     C --> C2[Execute build-walkthrough.py: Render MD & HTML]
     C2 --> D[Chat Briefing: Deliverable Paths + Top Gotchas]
     D --> E[Standby: Reviewer Reads Real Code in Their IDE]
     E --> F{Reviewer Input}
-    F -- "ad-hoc question" --> G[Neutral Both-Hypotheses Investigation]
-    G --> E
+    F -- "simple clarification" --> G1[Direct Answer in Context]
+    G1 --> E
+    F -- "deep code question" --> G2[Dispatch Investigator Subagent]
+    G2 --> G3[Update review-concerns.json]
+    G3 --> E
     F -- "push / amend / rebase" --> H[Staleness Check: Regenerate Walkthrough + HTML]
     H --> C
-    F -- "explicit request" --> I[Compile Logged Concerns into PR Comment]
+    F -- "explicit request" --> I[Compile review-concerns.json into PR Comment]
     I --> E
 ```
 

@@ -7,6 +7,19 @@ Each release is tagged `review-walkthrough-v<version>` and published on the [Rel
 
 ---
 
+## [3.4.0] - 2026-10-19
+
+### Added
+- **Subagent Context Preservation (Tier S):**
+  - **Author Subagent:** In multi-agent harnesses, offloads initial diff inspection, structural graph analysis, JSON authoring, and compiler execution to an isolated child subagent. Preserves >95% of context headroom for the primary agent before standby Q&A begins.
+  - **Discretionary Investigator Subagents:** Deep multi-file execution paths, concurrency/race-condition verifications, caller blast-radius inquiries, and git-history excavations are dispatched to an isolated `Code Review Investigator` subagent under the neutral both-hypotheses protocol. Subagents communicate naturally and thoroughly with the primary agent without artificial brevity caps.
+- **Persistent Review Concerns (`review-concerns.json`):**
+  - Externalized state store saved alongside `review-walkthrough.json` in the ephemeral scratch directory.
+  - Tracks review findings, open questions, and verified edge cases across a 4-state lifecycle (`open`, `action-needed`, `resolved`, `accepted-risk`), remaining immune to long-session memory degradation and context compactions.
+  - Feeds Section 7 on-demand PR review comment formatting deterministically.
+- **Two-Tier Capability Architecture:**
+  - Standardized Tier S (multi-agent harness) and Tier C (single-agent fallback with targeted line reads) protocol for seamless portability across all AI harnesses.
+
 ## [3.3.1] - 2026-10-19
 
 ### Fixed

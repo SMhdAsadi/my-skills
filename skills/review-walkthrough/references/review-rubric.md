@@ -49,7 +49,7 @@ Gotchas must be line-anchored, practical, and written in direct spoken developer
 
 ---
 
-## 3. Neutral Investigation Protocol (Emergent Q&A)
+## 3. Neutral Investigation Protocol & Review State
 
 When the reviewer asks an ad-hoc question during standby, investigate without a thumb on the scale.
 
@@ -59,25 +59,71 @@ When the reviewer asks an ad-hoc question during standby, investigate without a 
 3. Collect concrete evidence for **both** sides: `file:line` references and actual execution paths.
 4. Report which way the evidence points, with the evidence. Keep the explanation direct and conversational. If unresolved, say so and name what would resolve it.
 
-### 3b. Subagent Dispatch Template (when subagents are supported)
+### 3b. Investigator Subagent Dispatch (Tier S Harnesses)
 
-> Investigate a code-review question in <repo>. Context: branch `<branch>` vs base `<base>`; inspect the diff with `git diff <base>...HEAD`. Target symbols/lines: <symbols, file:line ranges>.
+When running in a multi-agent harness, dispatch an isolated investigator subagent for questions that warrant real investigation. Subagents communicate naturally and thoroughly with the primary agent without artificial line caps:
+
+> **Role:** `Code Review Investigator`
+> **Prompt Template:**
+> Investigate a code-review question in `<repo>`. Context: branch `<branch>` (HEAD: `<headSha>`, base: `<base>`); inspect the diff with `git diff <base>...HEAD`.
+> Target symbols/lines: `<symbols, file:line ranges>`.
 >
-> Question under review: <user's question>.
+> Question under review: `<user's question>`.
 >
-> Evaluate BOTH hypotheses: (1) the code handles this correctly — identify the protections that exist and where they live; (2) the code can fail here — identify concrete edge cases, callers, or execution paths that defeat those protections. Do not try to confirm a predetermined answer. Gather caller traces and report evidence as `file:line` references. End with: evidence summary, which hypothesis the evidence supports, and any remaining uncertainty.
+> Evaluate BOTH hypotheses neutrally:
+> 1. The code handles this correctly: identify the protections that exist, contracts enforced, and where they live. Cite exact `file:line` locations.
+> 2. The code can fail here: identify concrete edge cases, callers, or execution paths that defeat those protections. Cite exact `file:line` locations.
+>
+> Do not try to confirm a predetermined answer. Trace real callers and execution flow using graph or grep tools. Communicate your full findings, evidence, and code context freely and thoroughly, concluding with a clear statement on where the evidence points.
 
-When subagents are unavailable, the primary agent runs the identical investigation itself under the same both-hypotheses mandate.
+When subagents are unavailable (Tier C), the primary agent runs the identical investigation itself under the same both-hypotheses mandate, using targeted line reads (`view_file` with `StartLine`/`EndLine`) to protect context headroom.
 
-### 3c. Concern Log Format
+### 3c. The Discretion Filter
 
-Keep a running internal log during standby; it feeds on-demand output only, never unsolicited recaps:
+Do not spawn subagents indiscriminately for every interaction:
+- **Answer directly (in-context):** Simple syntax or code questions where the answer is visible in the diff, clarifications of the walkthrough cards or chat briefing, or quick single-file checks.
+- **Dispatch Investigator Subagent:** Multi-file execution paths, concurrency/race-condition invariants, caller blast-radius inquiries across the repository, or git-history archaeology to determine why a pattern was established.
 
+### 3d. Persistent Review Concerns Store (`review-concerns.json`)
+
+To prevent loss of review findings during long conversations or session compactions, the agent maintains `<storage-dir>/review-concerns.json` as a structured single source of truth.
+
+#### Data Schema
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": 1,
+  "headSha": "short HEAD commit hash",
+  "baseRef": "main",
+  "updatedAt": "ISO-8601 timestamp",
+  "concerns": [
+    {
+      "id": "c1",
+      "source": "gotcha | qa | reviewer",
+      "gotchaId": "optional-link-to-walkthrough-gotcha-id",
+      "ref": {
+        "path": "src/services/worker.ts",
+        "startLine": 130,
+        "endLine": 142
+      },
+      "topic": "Potential race window in job activation check",
+      "status": "open | action-needed | resolved | accepted-risk",
+      "findings": "Full evidence summary detailing evaluated protections and failure modes.",
+      "resolution": "Agreed conclusion or recommended fix.",
+      "suggestedComment": "Markdown PR comment ready for posting (populated for action-needed items)."
+    }
+  ]
+}
 ```
-- [Layer N / file:line] Concern or open question — status: open | resolved | accepted-risk
-```
 
-Compile the log into a ready-to-post markdown block only on explicit user request.
+#### Status Lifecycle
+- **`open`**: Initial state for walkthrough gotchas or newly raised reviewer questions awaiting investigation.
+- **`action-needed`**: Confirmed defect, subtle bug, or agreed code change that should be addressed before merging.
+- **`resolved`**: Investigated and verified safe (false alarm dismissed with concrete code evidence).
+- **`accepted-risk`**: Genuine trade-off or technical debt explicitly acknowledged by the reviewer as acceptable for this PR.
+
+#### Compiling to PR Review Comments (Section 7)
+When the user explicitly asks to format PR comments, read `review-concerns.json`, filter for items where `status == "action-needed"`, and emit a clean, ready-to-post markdown block grouped by file and line anchor. Never output unsolicited review comments.
 
 ---
 

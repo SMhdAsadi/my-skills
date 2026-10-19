@@ -5,7 +5,7 @@ license: MIT
 compatibility: "git >= 2.0"
 metadata:
   author: SMhd
-  version: "3.3.1"
+  version: "3.4.0"
   tags:
     - git
     - code-review
@@ -18,13 +18,17 @@ metadata:
 
 An **Anti-Fatigue Review Walkthrough Generator and On-Demand Review Co-Pilot** designed to help developers review code better and faster in their native IDE.
 
-Instead of dumping a wall of formal academic text or gating the review behind turn-by-turn chat steps, this skill analyzes the branch diff once, writes a structured JSON document (`review-walkthrough.json`), and executes `scripts/build-walkthrough.py` to deterministically generate both a lean, high-signal Markdown walkthrough and an interactive card-based HTML companion (with multi-IDE deep links for VS Code, Cursor, Windsurf, Zed, Android Studio, GoLand, and JetBrains, plus a 1-click Copy Path button). The reviewer reads at their own pace in their IDE, and asks the agent questions only when they hit ambiguities, tricky logic, or suspected bugs. Consult [`references/review-rubric.md`](references/review-rubric.md) for layering heuristics, risk-hypothesis formulas, and investigation templates. Consult [`references/html-walkthrough.md`](references/html-walkthrough.md) for the full JSON Schema v2 and HTML companion specification.
+Instead of dumping a wall of formal academic text or gating the review behind turn-by-turn chat steps, this skill analyzes the branch diff once, writes a structured JSON document (`review-walkthrough.json`), and executes `scripts/build-walkthrough.py` to deterministically generate both a lean, high-signal Markdown walkthrough and an interactive card-based HTML companion (with multi-IDE deep links for VS Code, Cursor, Windsurf, Zed, Android Studio, GoLand, and JetBrains, plus a 1-click Copy Path button). To maximize context headroom for interactive review Q&A, harnesses with subagent capabilities (Tier S) dispatch an isolated Author Subagent for diff analysis, JSON authoring, and build execution, keeping the primary agent's context clean. The reviewer reads at their own pace in their IDE, and asks the agent questions only when they hit ambiguities, tricky logic, or suspected bugs. Consult [`references/review-rubric.md`](references/review-rubric.md) for layering heuristics, risk-hypothesis formulas, and investigation templates. Consult [`references/html-walkthrough.md`](references/html-walkthrough.md) for the full JSON Schema v2 and HTML companion specification.
 
 ---
 
 ## Process
 
 ### 1. Pin the Base & Inspect the Diff
+
+**Harness Capability & Subagent Delegation (Tier S vs. Tier C):**
+- **Tier S (Multi-Agent Harness):** If the harness supports spawning subagents (e.g., `invoke_subagent`), the primary agent immediately dispatches an isolated **Walkthrough Author Subagent** to execute Steps 1–4, initialize `review-concerns.json`, and return only the concise briefing data. The primary agent skips directly to Section 5, entering standby mode with over 95% of its context window completely fresh.
+- **Tier C (Single-Agent Harness):** When running in a single-agent environment without subagent primitives, the primary agent executes Steps 1–4 directly using targeted line reads.
 
 1. Determine the base reference (`main`, `master`, `develop`, or a specific branch/commit named by the user).
    - If unspecified, resolve it silently: check for an upstream tracking branch, then fall back to `main`, then `master`, then `develop`, in that order.
@@ -73,7 +77,7 @@ The walkthrough deliverables are disposable drafts. They must never be committed
 2. **Harness artifact directory:** the harness's dedicated artifact/scratch directory (e.g., Antigravity artifact directory).
 3. **System temp directory (final fallback):** e.g., `/tmp/review-walkthrough-<branch>-<timestamp>/`.
 
-Write `review-walkthrough.json` into this directory. The generator script outputs `review-walkthrough.md` and `review-walkthrough.html` side-by-side in the same location.
+Write `review-walkthrough.json` into this directory. The generator script outputs `review-walkthrough.md` and `review-walkthrough.html` side-by-side in the same location. Along with `review-walkthrough.json`, initialize `review-concerns.json` in the same directory (pre-populated with walkthrough gotchas marked `status: "open"`) to track review state across turns and feed Section 7.
 
 #### 4b. Tone & Style Guidelines (Anti-Fatigue)
 
@@ -196,15 +200,18 @@ Then stop. Do not walk through steps, do not ask the user to type `next`.
 The human drives pacing. The agent answers questions and otherwise stays out of the way.
 
 - **Staleness check:** if the user mentions pushing, amending, or rebasing — or a long gap has passed — re-run `git rev-parse HEAD` and compare to the pinned commit. If it changed, flag it and offer to re-diff and regenerate the walkthrough (markdown and HTML together) rather than answering against stale content. Editor links open the working tree, so after a HEAD change their line numbers may no longer match.
-- **Concern logging:** silently record substantive concerns, todos, and open questions raised during the conversation. Never rely on reconstructing them from scrollback later. The log feeds Section 7.
+- **Concern logging & persistent state:** silently record substantive concerns, todos, and open questions into `<storage-dir>/review-concerns.json` (see `references/review-rubric.md` Section 3d). Keep status updated (`open`, `action-needed`, `resolved`, `accepted-risk`). Never rely on reconstructing findings from chat scrollback. This persistent store feeds Section 7.
 - **Answering technical questions** (e.g., *"In Layer 2, does `processOrder` handle concurrent duplicate requests?"*):
-  - Investigate neutrally: read the target code, trace real execution paths and callers, and evaluate **both hypotheses** — what protections exist *and* what edge cases could defeat them.
-  - Never set out to "confirm" the user's suspicion; never set out to dismiss it either. Report concrete evidence (`file:line`, caller traces) and state plainly which way the evidence points.
-  - For broad multi-file questions, dispatch one neutral research subagent per the template in `references/review-rubric.md` (Section 3b); without subagent support, run the same investigation directly.
+  - **Discretion Filter (Direct vs. Subagent):**
+    - *Direct answer:* Answer directly in-context for simple clarifications, code directly visible in the diff, questions answered by the existing walkthrough, or quick single-file checks. Do not spawn an unnecessary subagent for simple inquiries.
+    - *Investigator Subagent (Tier S):* When real investigation is warranted — multi-file execution paths, concurrency/race-condition edge cases, caller blast radius across the codebase, or git-history excavations — dispatch an isolated `Code Review Investigator` subagent under the neutral both-hypotheses protocol (see `references/review-rubric.md` Section 3b). Subagents communicate freely and thoroughly with the primary agent without artificial line caps; the primary agent then synthesizes the evidence conversationally for the reviewer.
+    - *Direct Investigation (Tier C):* In single-agent harnesses without subagents, the primary agent runs the identical investigation directly using targeted line reads (`view_file` ranges) rather than reading whole files.
+  - **Neutral Both-Hypotheses Mandate:** Evaluate what protections exist *and* what edge cases could defeat them. Report concrete evidence (`file:line`, caller traces) and state plainly which way the evidence points without bias.
+  - Update `review-concerns.json` with the findings and agreed resolution.
 
 ---
 
 ### 7. Strictly On-Demand Outputs
 
 - **Never** generate an unsolicited sign-off recap, approval summary, or PR comment block.
-- Only when the user explicitly asks (e.g., *"Format our findings into a PR review comment"*), compile the logged concerns, agreements, and open questions from Section 6 into a ready-to-post markdown block.
+- Only when the user explicitly asks (e.g., *"Format our findings into a PR review comment"*), read `review-concerns.json`, filter for items marked `action-needed` (and optionally summarize `accepted-risk` items as non-blocking notes), and compile them into a ready-to-post markdown block grouped by file and line anchor.

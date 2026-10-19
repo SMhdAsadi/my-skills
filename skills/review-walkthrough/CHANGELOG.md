@@ -7,6 +7,13 @@ Each release is tagged `review-walkthrough-v<version>` and published on the [Rel
 
 ---
 
+## [3.3.1] - 2026-10-19
+
+### Fixed
+- **Reading order card rendering in HTML companion:** Fixed a missing return statement in the `reading` step builder inside `walkthrough-template.html`, which caused the Suggested Reading Order card to fail to render its header, file checklist, and skim recommendation.
+- **Card visibility styling:** Added `.card[hidden]{display:none!important}` and `.card:not([hidden]){display:block}` rules to ensure inactive cards remain strictly hidden across all browser environments.
+- **DOM mounting fallback:** Added a cross-environment `mount` helper falling back to `removeChild`/`append` when `replaceChildren` is unsupported or unavailable.
+
 ## [3.3.0] - 2026-10-13
 
 ### Changed

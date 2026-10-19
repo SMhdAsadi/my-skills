@@ -54,6 +54,19 @@ class TestWalkthroughTemplate(unittest.TestCase):
         # Test step must use checkboxes with review-walkthrough-test localStorage key
         self.assertIn("review-walkthrough-test:", self.content)
         self.assertIn("id:'t'+i", self.content)
+    def test_reading_step_returns_elements(self):
+        # Reading step builder must return its title, checklist, and skim elements
+        self.assertIn("return[T(x),ul,x.skim&&h('p',{class:'mut',text:S.skim+': '+x.skim.join(' · ')})]},", self.content)
+
+    def test_card_hidden_css_rule(self):
+        # Hidden cards must enforce display:none!important to prevent rendering bugs
+        self.assertIn(".card[hidden]{display:none!important}", self.content)
+        self.assertIn(".card:not([hidden]){display:block}", self.content)
+
+    def test_mount_fallback_helper(self):
+        # Template must define a mount helper fallback for environments lacking replaceChildren
+        self.assertIn("const mount=(el,...ch)=>{if(el.replaceChildren)el.replaceChildren(...ch);else{", self.content)
+        self.assertIn("mount(app,top,h('main',null,cards),h('div',{class:'nav'},pv,nx),ft);", self.content)
 
 
 if __name__ == "__main__":

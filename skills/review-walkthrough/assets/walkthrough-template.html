@@ -58,6 +58,8 @@ code{font:.9em var(--mono);background:var(--code-bg);padding:.1em .35em;border-r
 .prog button.on::after{background:var(--accent)}
 .status{margin:6px 0 16px}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:24px;min-height:180px;min-width:0}
+.card[hidden]{display:none!important}
+.card:not([hidden]){display:block}
 .card.in{animation:sl .14s ease-out}
 @keyframes sl{from{opacity:0;transform:translateX(calc(var(--dx)*12px))}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
@@ -202,6 +204,7 @@ reading:x=>{
   const cb=h('input',{type:'checkbox',id:'c'+i});cb.checked=sv.includes(i);
   cb.onchange=()=>{const a=[...ul.querySelectorAll('input')].flatMap((c,j)=>c.checked?[j]:[]);try{localStorage.setItem(key,JSON.stringify(a))}catch(e){}};
   return h('li',null,cb,h('div',null,h('div',{class:'role-row'},h('label',{for:'c'+i},h('strong',null,rich(it.role))),refPill(it)),P1(it.summary)))}));
+ return[T(x),ul,x.skim&&h('p',{class:'mut',text:S.skim+': '+x.skim.join(' · ')})]},
 test:x=>{
  const key='review-walkthrough-test:'+D.meta.headSha;let sv=[];try{sv=JSON.parse(localStorage.getItem(key))||[]}catch(e){}
  const ul=h('ul',{class:'chk'+(x.items.length>6?' chk-list':'')},x.items.map((t,i)=>{
@@ -238,7 +241,9 @@ function updateAllLinks(){
   }
  })}
 
-function fail(msg){setLang(D&&D.lang);app.replaceChildren(h('main',null,h('section',{class:'card'},h('h2',{text:S.invalid}),h('p',null,h('code',{dir:'ltr',text:String(msg)})))))}
+const mount=(el,...ch)=>{if(el.replaceChildren)el.replaceChildren(...ch);else{while(el.firstChild)el.removeChild(el.firstChild);ch.flat(9).forEach(c=>{if(c!=null&&c!==false)el.append(typeof c==='string'?document.createTextNode(c):c)})}};
+
+function fail(msg){setLang(D&&D.lang);mount(app,h('main',null,h('section',{class:'card'},h('h2',{text:S.invalid}),h('p',null,h('code',{dir:'ltr',text:String(msg)})))))}
 
 function build(){
  const m=D.meta,st=D.steps,tot=st.length,gt=st.filter(x=>x.kind==='gotcha').length;let gn=0;document.title=R?m.title.replace(/[→➔➜]|->/g,'←'):m.title;
@@ -254,7 +259,7 @@ function build(){
  const [fa,fb]=S.foot.split('{sha}');
  const mdBase=String(m.markdownPath||'').split('/').pop();
  const ft=h('footer',{class:'foot mut'},h('p',null,fa,h('code',{dir:'ltr',text:m.headSha}),fb),m.markdownPath?h('p',null,S.text+': ',h('code',{dir:'ltr',title:m.markdownPath,text:mdBase})):null);
- app.replaceChildren(top,h('main',null,cards),h('div',{class:'nav'},pv,nx),ft);
+ mount(app,top,h('main',null,cards),h('div',{class:'nav'},pv,nx),ft);
  let cur=-1;
  const show=i=>{i=Math.max(0,Math.min(tot-1,i));const ch=i!==cur;cur=i;
   cards.forEach((c,j)=>{c.hidden=j!==i});prog.querySelectorAll('button').forEach((b,j)=>{b.classList.toggle('on',j<=i);j===i?b.setAttribute('aria-current','step'):b.removeAttribute('aria-current')});

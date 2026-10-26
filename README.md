@@ -1,130 +1,51 @@
 # Agent Skills Collection
 
-[![Agent Skills Standard](https://img.shields.io/badge/Agent%20Skills-Standard-0A84FF?style=flat-square&logo=git&logoColor=white)](https://agentskills.io)
-[![Vercel Skills CLI](https://img.shields.io/badge/Vercel%20Skills-CLI%20Compatible-000000?style=flat-square&logo=vercel&logoColor=white)](https://github.com/vercel-labs/skills)
+[![Agent Skills Standard](https://img.shields.io/badge/Agent%20Skills-Standard-0A84FF?style=flat-square)](https://agentskills.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 
-A curated collection of production-grade skills for AI coding agents. Adheres strictly to the [Agent Skills standard](https://agentskills.io) and is ready for use across all major agent harnesses including **Vercel Skills CLI (`npx skills`)**, **Claude Code**, **OpenCode**, **OpenAI Codex**, **Cursor**, and **Antigravity**.
+Skills are instruction packs your AI agent reads when a task matches. No server, no API keys, no configuration — install once and they work in Claude Code, Cursor, Codex, OpenCode, Antigravity, and anything else that reads the [Agent Skills standard](https://agentskills.io).
 
 ---
 
-## Skills Catalog
-
-| Skill | Category | Description | Primary Triggers |
-| :--- | :--- | :--- | :--- |
-| [`review-walkthrough`](skills/review-walkthrough/) | Code Review / Workflow | Anti-fatigue review walkthrough generator and on-demand review co-pilot. Analyzes a branch diff once, writes a compact (~40–60 line), high-signal review walkthrough in everyday spoken developer language to an ephemeral markdown artifact, then stays on standby for emergent Q&A while the reviewer reads real code in their IDE. | *"walk through changes"*, *"review branch"*, *"guided code review"*, *"review walkthrough for diff"* |
-| [`mr-comment-triage`](skills/mr-comment-triage/) | Code Review / Workflow | Turns unresolved GitHub PR / GitLab MR review threads into one batch plan. Fetches threads through GraphQL/REST, re-anchors each comment against the real code, assigns an independent verdict (`ACCEPT`, `ALTERNATIVE`, `PUSH_BACK`, `DEFER`, `ALREADY_FIXED`, `CLARIFY`), and applies only the items you approve — with replies staying drafts until explicitly posted. | *"handle review comments"*, *"triage PR feedback"*, *"respond to reviewers"*, *"work through open threads"*, *"which comments are valid"* |
-| [`better-persian`](skills/better-persian/) | Natural Language / Localization | Modern Persian (Farsi) writing and orthography engine. Enforces natural phrasing, detects appropriate registers (formal-but-human, tech/UI, administrative, colloquial, academic), ensures strict orthography (ZWNJ/نیم‌فاصله, Persian glyphs, quotes), and strips robotic AI clichés. | *"better-persian"*, *"write in persian"*, *"persian copywriting"*, *"long-form persian"*, *"متن فارسی"* |
-
----
-
-## Quickstart & Installation
-
-### Option 1: Vercel Skills CLI (`npx skills`)
-
-The fastest way to install skills into your local project or user environment:
+## Install
 
 ```bash
-# Install all skills from this repository
 npx skills add SMhdAsadi/my-skills
-
-# Install only review-walkthrough
-npx skills add SMhdAsadi/my-skills@review-walkthrough
-
-# Install globally for your user across all projects
-npx skills add SMhdAsadi/my-skills --global
-
-# Target a specific agent harness (e.g. claude-code, cursor)
-npx skills add SMhdAsadi/my-skills --agent claude-code
 ```
 
-> [!TIP]
-> You can preview the skills in this repository before installing:
-> ```bash
-> npx skills add SMhdAsadi/my-skills --list
-> ```
+That installs every skill and wires them into whichever agents you already have.
+
+```bash
+npx skills add SMhdAsadi/my-skills --global              # available in every project
+npx skills add SMhdAsadi/my-skills -s mr-comment-triage  # just one skill
+```
+
+Prefer to manage files yourself? Each folder under `skills/` is self-contained — copy it into your agent's skills directory and you're done.
 
 ---
 
-### Option 2: Harness-Specific Setup
+## The skills
 
-#### OpenCode
-OpenCode recognizes skills defined in `skills/` or `.opencode/skills/`. To use in an existing project:
-```bash
-git clone https://github.com/SMhdAsadi/my-skills.git /tmp/my-skills
-mkdir -p .opencode/skills
-cp -r /tmp/my-skills/skills/* .opencode/skills/
-```
+### [Review walkthrough](skills/review-walkthrough/)
 
-#### Anthropic Claude Code
-Claude Code discovers skills placed in `~/.claude/skills/` (global) or `.claude/skills/` (project-level):
-```bash
-mkdir -p ~/.claude/skills
-git clone https://github.com/SMhdAsadi/my-skills.git ~/.claude/skills/my-skills
-```
+You're staring at a branch with fourteen changed files and no obvious place to start. This reads the diff once and hands you a short walkthrough: what actually changed, the two or three spots most likely to bite, and the order to read the files in. Every reference links straight into your editor at the right line. After that it goes quiet and waits for your questions.
 
-#### Cursor
-Cursor references rules via `.cursorrules` or `.cursor/rules/`. The included [`.cursorrules`](.cursorrules) configures Cursor to automatically utilize skills from `skills/`.
+> *"Walk me through the changes on this branch."*
 
-#### OpenAI Codex & Generic Agent Harnesses
-Codex and other tools utilize [`AGENTS.md`](AGENTS.md) as the central index. Link or copy `skills/` into `~/.agents/skills/` or include `AGENTS.md` in your project root.
+### [MR comment triage](skills/mr-comment-triage/)
 
-#### Google Antigravity / Gemini CLI
-Copy or symlink the skill directory to your Antigravity skills path:
-```bash
-mkdir -p ~/.gemini/config/skills
-cp -r skills/review-walkthrough ~/.gemini/config/skills/
-```
+Nine review comments, and at least two of them contradict each other. This fetches every open thread on a GitHub PR or GitLab MR — self-hosted GitLab included — checks each claim against the real code, and sorts them: accept this, push back on that, this one needs a decision you haven't made yet. You see the whole plan at once and approve it item by item. Nothing is edited, committed, or replied to before that, and replies stay drafts until you explicitly post them.
 
----
+> *"Triage the review comments on this MR."*
 
-## Repository Structure
+### [Better Persian](skills/better-persian/)
 
-```
-my-skills/
-├── .github/
-│   ├── ISSUE_TEMPLATE/       # Structured GitHub issue templates
-│   │   ├── bug_report.yml
-│   │   └── skill_request.yml
-│   └── workflows/
-│       └── validate-skills.yml  # Automated CI validation workflow
-├── .cursorrules              # Cursor IDE instructions
-├── .gitattributes            # Git line endings and file attributes
-├── .gitignore                # Clean git exclusion rules
-├── AGENTS.md                 # Universal agent context pointer (Codex, OpenCode)
-├── CLAUDE.md                 # Claude Code agent configuration
-├── LICENSE                   # MIT License
-├── README.md                 # Repository catalog and installation documentation
-└── skills/
-    └── review-walkthrough/   # Anti-fatigue review walkthrough generator & review co-pilot
-        ├── SKILL.md          # Agent specification and instructions
-        ├── README.md         # Detailed human-facing documentation
-        ├── CHANGELOG.md      # Per-skill version history (Keep a Changelog)
-        └── references/
-            └── review-rubric.md # Layering, risk-hypothesis & investigation heuristics
-```
+Persian that reads like a person wrote it, not a translation engine. It picks the right register for the job — formal proposal, UI microcopy, casual message — fixes half-spaces, glyphs, and quotation marks, and removes the bureaucratic tells that make machine-written Farsi obvious.
 
----
-
-## Adding New Skills
-
-Every skill in this repository must comply with the [Agent Skills standard](https://agentskills.io):
-
-1. **Directory**: Create a new folder under `skills/<skill-name>/`.
-2. **`SKILL.md` Specification**:
-   - Must contain YAML frontmatter delimited by `---`.
-   - `name`: 1–64 characters, lowercase alphanumeric and hyphens (`^[a-z0-9-]+$`).
-   - `description`: Up to 1024 characters clearly defining what the skill does and explicit trigger conditions.
-   - `license`: SPDX identifier (e.g. `MIT`).
-   - `compatibility`: Optional runtime requirements (e.g. `git >= 2.0`).
-3. **Progressive Disclosure**:
-   - Keep `SKILL.md` focused on operational procedures and completion criteria.
-   - Place large reference tables, rubrics, or schemas in `skills/<skill-name>/references/`.
-   - Place automation scripts in `skills/<skill-name>/scripts/`.
-4. **Validation**: Validate your skill against the specification before submitting a PR.
+> *"این متن را به فارسی روان بازنویسی کن."*
 
 ---
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+MIT — see [LICENSE](LICENSE).

@@ -10,3 +10,4 @@ This repository hosts reusable skills following the Agent Skills specification (
 
 ## Active Skills
 - `review-walkthrough`: When the user asks for a code review, branch walkthrough, or a reading plan for git changes, read `skills/review-walkthrough/SKILL.md` and follow its plan-generation + standby co-pilot procedure.
+- `mr-comment-triage`: When the user asks to handle review comments, triage PR/MR feedback, or respond to reviewers, read `skills/mr-comment-triage/SKILL.md` and follow its fetch → verify → approve → apply → reply procedure. Never post replies without an explicit go-ahead.

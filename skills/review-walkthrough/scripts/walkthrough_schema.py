@@ -109,6 +109,11 @@ def _check_ref(ref: Dict[str, Any], context: str) -> None:
 def validate_walkthrough(data: Dict[str, Any]) -> Dict[str, Any]:
     """Validate a walkthrough dictionary against the Schema v2 contract.
 
+    This is the build-time mirror of ``check(d)`` in
+    ``assets/walkthrough-template.html``. The canonical rules live in
+    ``references/html-walkthrough.md`` (Section 2); when a rule changes there,
+    update both this function and the runtime ``check(d)`` together.
+
     Returns the validated data dictionary or raises ValidationError.
     """
     if not isinstance(data, dict):
@@ -233,11 +238,13 @@ def validate_walkthrough(data: Dict[str, Any]) -> Dict[str, Any]:
                 )
             boundaries = step.get("boundaries")
             if boundaries is not None:
-                if not isinstance(boundaries, list) or any(
-                    not isinstance(b, str) or not b.strip() for b in boundaries
+                if (
+                    not isinstance(boundaries, list)
+                    or not (1 <= len(boundaries) <= 8)
+                    or any(not isinstance(b, str) or not b.strip() for b in boundaries)
                 ):
                     raise ValidationError(
-                        f"{ctx}.boundaries must be a list of non-empty strings"
+                        f"{ctx}.boundaries must be an array of 1 to 8 non-empty strings"
                     )
 
         elif kind == "gotcha":
@@ -258,6 +265,19 @@ def validate_walkthrough(data: Dict[str, Any]) -> Dict[str, Any]:
                 )
             for j, r in enumerate(refs):
                 _check_ref(r, f"{ctx}.refs[{j}]")
+
+            extra = step.get("extra")
+            if extra is not None:
+                if (
+                    not isinstance(extra, list)
+                    or len(extra) != 1
+                    or not isinstance(extra[0], str)
+                    or not extra[0].strip()
+                ):
+                    raise ValidationError(
+                        f"{ctx}.extra must be an array of 1 string "
+                        f"(exactly one short paragraph), got: {extra!r}"
+                    )
 
             look_for = step.get("lookFor")
             if look_for is not None and (

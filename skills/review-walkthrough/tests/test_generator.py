@@ -240,6 +240,27 @@ class TestWalkthroughGenerator(unittest.TestCase):
             self.assertIn("Token Refresh Flow", md_file.read_text(encoding="utf-8"))
             self.assertIn("walkthrough-data", html_file.read_text(encoding="utf-8"))
 
+    def test_cli_rejects_invalid_extra_and_writes_nothing(self):
+        data = copy.deepcopy(self.sample_data_en)
+        data["steps"][1]["extra"] = "Worst case is an in-flight refresh with no lock."
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            json_path = Path(tmpdir) / "walkthrough.json"
+            json_path.write_text(json.dumps(data), encoding="utf-8")
+
+            cli_script = SCRIPTS_DIR / "build-walkthrough.py"
+            res = subprocess.run(
+                [sys.executable, str(cli_script), str(json_path), "--out-dir", tmpdir],
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertNotEqual(res.returncode, 0)
+            self.assertIn("steps[1].extra", res.stderr)
+            self.assertIn(str(json_path.resolve()), res.stderr)
+            self.assertFalse((Path(tmpdir) / "walkthrough.md").exists())
+            self.assertFalse((Path(tmpdir) / "walkthrough.html").exists())
+
     def test_shim_delegates_to_build_walkthrough(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             json_path = Path(tmpdir) / "walkthrough.json"

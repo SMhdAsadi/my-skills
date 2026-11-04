@@ -1,3 +1,4 @@
+import copy
 import unittest
 import sys
 from pathlib import Path
@@ -196,6 +197,44 @@ class TestWalkthroughSchema(unittest.TestCase):
         bad_data["steps"][1]["refs"] = []
         with self.assertRaises(ValidationError):
             validate_walkthrough(bad_data)
+
+    def test_accepts_extra_with_exactly_one_paragraph(self):
+        data = copy.deepcopy(self.valid_data)
+        data["steps"][1]["extra"] = ["Worst case is an expired token with no refresh path."]
+        validated = validate_walkthrough(data)
+        self.assertEqual(len(validated["steps"][1]["extra"]), 1)
+
+    def test_rejects_extra_as_string(self):
+        bad_data = copy.deepcopy(self.valid_data)
+        bad_data["steps"][1]["extra"] = "Worst case is an expired token."
+        with self.assertRaises(ValidationError) as ctx:
+            validate_walkthrough(bad_data)
+        self.assertIn("steps[1].extra", str(ctx.exception))
+        self.assertIn("array of 1 string", str(ctx.exception))
+
+    def test_rejects_extra_with_two_items(self):
+        bad_data = copy.deepcopy(self.valid_data)
+        bad_data["steps"][1]["extra"] = ["First paragraph.", "Second paragraph."]
+        with self.assertRaises(ValidationError) as ctx:
+            validate_walkthrough(bad_data)
+        self.assertIn("steps[1].extra", str(ctx.exception))
+
+    def test_rejects_more_than_eight_split_boundaries(self):
+        bad_data = copy.deepcopy(self.valid_data)
+        bad_data["steps"].insert(
+            1,
+            {
+                "id": "split",
+                "kind": "split",
+                "section": "Split Recommendation",
+                "title": "Large change — split it.",
+                "recommendation": "Separate the auth service from the UI.",
+                "boundaries": [f"Unit {i}" for i in range(9)],
+            },
+        )
+        with self.assertRaises(ValidationError) as ctx:
+            validate_walkthrough(bad_data)
+        self.assertIn("steps[1].boundaries", str(ctx.exception))
 
     def test_rejects_invalid_line_numbers(self):
         bad_data = dict(self.valid_data)

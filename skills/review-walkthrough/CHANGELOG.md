@@ -7,6 +7,13 @@ Each release is tagged `review-walkthrough-v<version>` and published on the [Rel
 
 ---
 
+## [3.4.1] - 2026-11-04
+
+### Fixed
+- **Build-time rejection of malformed `extra` fields:** `walkthrough_schema.py` now enforces the Schema v2 contract for a gotcha's optional `extra` (exactly one non-empty string in an array), matching the runtime `check(d)` in the HTML template. A string or a multi-item array now fails the build with the offending JSON path instead of silently rendering "Invalid walkthrough data".
+- **Split boundary bound:** `boundaries` is now limited to 1–8 entries, matching the runtime validator.
+- **File context in validation errors:** schema failures now name the input JSON file alongside the offending path (for example `…/review-walkthrough.json: steps[1].extra …`), and fail before either deliverable is written.
+
 ## [3.4.0] - 2026-10-19
 
 ### Added

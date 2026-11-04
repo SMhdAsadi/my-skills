@@ -366,8 +366,13 @@ def compile_walkthrough(
             resolved_diff_files = diff_out.splitlines()
             data = resolve_paths_against_diff(data, resolved_diff_files)
 
-    # 4. Schema validation
-    data = validate_walkthrough(data)
+    # 4. Schema validation (fail fast before either deliverable is rendered)
+    try:
+        data = validate_walkthrough(data)
+    except ValidationError as e:
+        if input_file_path:
+            raise ValidationError(f"{input_file_path}: {e}") from e
+        raise
 
     # 5. Determine if files should be written and target paths
     should_write = write_files

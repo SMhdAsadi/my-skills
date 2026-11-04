@@ -82,7 +82,7 @@ Step numbers, «نکتهٔ ۱ از ۳» counters, and progress are computed by t
               "startLine": int >= 1,
               "endLine":   optional int >= startLine,
               "status":    optional "modified" (default) | "added" | "deleted" }
-"extra":    optional array of at most 1 short paragraph (a real edge case)
+"extra":    optional array of exactly 1 short paragraph (a real edge case)
 "lookFor":  optional, one sentence stating what to verify in the code
 ```
 A gotcha without `body` or without at least one ref is invalid. No severity, fix, snippet, or evidence fields exist on purpose (see `review-rubric.md`, Section 4c).

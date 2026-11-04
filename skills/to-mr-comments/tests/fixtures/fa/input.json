@@ -22,7 +22,7 @@
   "comments": [
     {
       "id": "C1",
-      "status": "draft",
+      "status": "pending",
       "type": "question",
       "severity": "maintainability",
       "anchor": {
@@ -46,7 +46,7 @@
       "body": "این محاسبه فرض می‌کند چیدمان چپ‌به‌راست است.\n\nآیا در حالت راست‌به‌چپ هم عرض کانتینر همان مقدار را برمی‌گرداند؟",
       "suggestion": null,
       "long": false,
-      "posted": { "draftNoteId": null, "noteId": null, "postedAt": null }
+      "posted": { "noteId": null, "discussionId": null, "postedAt": null }
     }
   ],
   "dropped": [],

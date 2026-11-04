@@ -25,7 +25,7 @@ def load_fixture(name: str) -> dict:
 def base_comment(**overrides) -> dict:
     comment = {
         "id": "C1",
-        "status": "draft",
+        "status": "pending",
         "type": "question",
         "severity": "nit",
         "anchor": {
@@ -49,7 +49,7 @@ def base_comment(**overrides) -> dict:
         "body": "A body line.",
         "suggestion": None,
         "long": False,
-        "posted": {"draftNoteId": None, "noteId": None, "postedAt": None},
+        "posted": {"noteId": None, "discussionId": None, "postedAt": None},
     }
     comment.update(overrides)
     return comment

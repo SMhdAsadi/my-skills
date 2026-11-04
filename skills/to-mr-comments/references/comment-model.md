@@ -57,7 +57,7 @@ Re-initialising preserves `comments`, `dropped`, and `events`, updates the `mr` 
   "comments": [
     {
       "id": "C1",
-      "status": "draft",
+      "status": "pending",
       "type": "blocker",
       "severity": "correctness",
       "anchor": {
@@ -81,7 +81,7 @@ Re-initialising preserves `comments`, `dropped`, and `events`, updates the `mr` 
       "body": "Calling `scheduleOnRN` on every pan tick can dispatch up to 120 calls/sec…",
       "suggestion": null,
       "long": false,
-      "posted": { "draftNoteId": null, "noteId": null, "postedAt": null }
+      "posted": { "noteId": null, "discussionId": null, "postedAt": null }
     }
   ],
   "dropped": [
@@ -134,7 +134,7 @@ Re-initialising preserves `comments`, `dropped`, and `events`, updates the `mr` 
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `id` | string | yes | `C1…Cn`, assigned once, never reused. |
-| `status` | enum | yes | `draft`, `approved`, `dropped`, `posted`. |
+| `status` | enum | yes | `pending`, `approved`, `dropped`, `posted`. A legacy `draft` is accepted on read and normalised to `pending`; writes always use `pending`. |
 | `type` | enum | yes | `blocker`, `question`, `suggestion`, `follow-up`, `test-gap`. |
 | `severity` | enum | yes | `blocking`, `correctness`, `maintainability`, `nit`. |
 | `anchor` | object | yes | See below. |
@@ -144,7 +144,7 @@ Re-initialising preserves `comments`, `dropped`, and `events`, updates the `mr` 
 | `body` | string | yes | Final prose only. Never the title, target, or fences. |
 | `suggestion` | string \| null | yes | Replacement lines without fences; required for `suggestion`, null otherwise. Maximum 5 lines. |
 | `long` | boolean | yes | Relaxes the body limit from 120 to 250 words. |
-| `posted` | object | yes | `{draftNoteId, noteId, postedAt}`. |
+| `posted` | object | yes | `{noteId, discussionId, postedAt}`. `noteId` is the created note; `discussionId` is set for discussion notes and for a matched duplicate. |
 | `dropReason` | string | no | Set by `drop` or by an approval skip. |
 
 ### `anchor`
@@ -177,7 +177,7 @@ Re-initialising preserves `comments`, `dropped`, and `events`, updates the `mr` 
 | `reason` | string | Why it was rejected. |
 | `source` | `conversation` \| `diff` | Where it came from. |
 
-Events are `{at, kind, detail}` with `kind` ∈ `created`, `updated`, `verified`, `approved`, `dropped`, `draft-created`, `published`, `skipped-duplicate`.
+Events are `{at, kind, detail}` with `kind` ∈ `created`, `updated`, `verified`, `approved`, `dropped`, `posted`, `skipped-duplicate`.
 
 ---
 
@@ -187,7 +187,7 @@ Events are `{at, kind, detail}` with `kind` ∈ `created`, `updated`, `verified`
 |---|---|---|
 | `inline` | `path`, `line`; `inDiff = true` | GitLab diff note (`position_type: "text"`, `new_line`). |
 | `file` | `path`; path in the diff's changed-file list | GitLab file note (`position_type: "file"`). |
-| `mr` | none | Regular MR note at publish time. |
+| `mr` | none | Regular MR note (`POST .../notes`). |
 
 `endLine` widens the range a human sees; it does not widen the API anchor. v1 deliberately avoids `line_range` / `line_code`, which are fragile across GitLab versions and renamed files. A comment about a whole deleted file demotes to `file` or `mr`; v1 never anchors a deleted line.
 
@@ -196,17 +196,17 @@ Events are `{at, kind, detail}` with `kind` ∈ `created`, `updated`, `verified`
 ## Status lifecycle
 
 ```
-draft ──approve──▶ approved ──publish──▶ posted
-  │                   │
-  └──────drop─────────┴──────▶ dropped
+pending ──approve──▶ approved ──post──▶ posted
+   │                    │
+   └──────drop──────────┴──────▶ dropped
 ```
 
-- `draft` → `approved`, `dropped`
-- `approved` → `posted`, `draft` (any edit resets it), `dropped`
-- `dropped` is terminal for publishing; the row stays in `comments` so its id is never reused.
-- `posted` is terminal. No edits, no second publish.
+- `pending` → `approved`, `dropped`
+- `approved` → `posted`, `pending` (any edit resets it), `dropped`
+- `dropped` is terminal for posting; the row stays in `comments` so its id is never reused.
+- `posted` is terminal. No edits, no second post.
 
-`approve` replaces the previous plan: a comment that was approved and is not in the new expression returns to `draft` and is reported as un-approved.
+`approve` replaces the previous plan: a comment that was approved and is not in the new expression returns to `pending` and is reported as un-approved.
 
 ---
 

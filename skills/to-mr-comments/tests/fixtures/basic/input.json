@@ -46,11 +46,11 @@
       "body": "Calling `scheduleOnRN` on every pan tick can dispatch up to 120 calls/sec. Throttling to 32ms keeps the thumb at native frame rate while cutting bridge traffic by about 75%.",
       "suggestion": null,
       "long": false,
-      "posted": { "draftNoteId": null, "noteId": null, "postedAt": null }
+      "posted": { "noteId": null, "discussionId": null, "postedAt": null }
     },
     {
       "id": "C2",
-      "status": "draft",
+      "status": "pending",
       "type": "question",
       "severity": "maintainability",
       "anchor": {
@@ -74,7 +74,7 @@
       "body": "The branch adds a public flag that only the slider reads. Is it meant for consumers, or can it stay internal until a second caller needs it?",
       "suggestion": null,
       "long": false,
-      "posted": { "draftNoteId": null, "noteId": null, "postedAt": null }
+      "posted": { "noteId": null, "discussionId": null, "postedAt": null }
     }
   ],
   "dropped": [

@@ -3,7 +3,7 @@
 [![Agent Skills Standard](https://img.shields.io/badge/Agent%20Skills-Standard-0A84FF?style=flat-square)](https://agentskills.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](../../LICENSE)
 
-Turns a review conversation or a branch diff into **a handful of comments that are wanted, true, anchored, and safe to publish** — then optionally stages them as GitLab draft notes only you can see.
+Turns a review conversation or a branch diff into **a handful of comments that are wanted, true, anchored, and safe to post** — preview them, approve them, then post them to the merge request.
 
 ---
 
@@ -21,7 +21,7 @@ You finished reviewing a branch and the findings are scattered across chat: thre
 
 `to-mr-comments` keeps a JSON state file as the source of truth. Each finding is classified (`agreed`, `open`, `rejected`, `hypothesis`), tested against an explicit selection policy, and only then added — which validates the evidence, counts the words, checks the budget, and verifies the anchor against `git diff <base>...HEAD`. A finding that does not pass is recorded in `dropped[]` with a reason instead of quietly disappearing.
 
-The result is a deterministic `mr-comments.md` with one copy box per comment. Posting is a separate, two-gate step: create author-only draft notes, look at them, then publish.
+The result is a deterministic `mr-comments.md` with one copy box per comment. Posting is a separate, single-gate step: preview the exact payloads, approve explicitly, then `--post`.
 
 ---
 
@@ -31,7 +31,7 @@ The result is a deterministic `mr-comments.md` with one copy box per comment. Po
 - **Evidence is mandatory** — a `path:line`, a backticked command, a URL, or a measurement with units. "Looks slow" is rejected by the script.
 - **Anchors verified at HEAD** — inline lines must fall inside the MR diff; a hash catches text drift; a moved line is `moved`, never silently accepted.
 - **Three anchor kinds** — `inline`, `file`, and `mr`, so a comment about a deleted or binary file still has a home.
-- **Status lifecycle** — `draft → approved → posted`, with `dropped` as an auditable side exit. Editing an approved comment resets it to draft.
+- **Status lifecycle** — `pending → approved → posted`, with `dropped` as an auditable side exit. Editing an approved comment resets it to pending.
 - **Deterministic renderer** — inline and summary modes, collision-safe fences, severity ordering, and a footer that states exactly how many anchors are verified at which SHA.
 - **Deduplication** — an existing note on the same `path:line` with a 0.9 text similarity is skipped, not repeated.
 - **GitLab-only, on purpose** — `glab api` is the only transport. Non-GitLab hosts are rejected before any comment is generated.
@@ -67,16 +67,16 @@ The agent takes it from there. The full command surface is in [`SKILL.md`](SKILL
 ## How It Works
 
 ```
-harvest ──▶ select ──▶ certify ──▶ emit ──▶ [gate 1] ──▶ [gate 2]
- conversa     policy     verify      md       drafts       publish
+harvest ──▶ select ──▶ certify ──▶ emit ──▶ [approve] ──▶ [post]
+ conversa     policy     verify      md       pending       comments
 ```
 
 1. **Harvest** — the conversation first, the diff second. Every candidate gets a decision and a short provenance quote.
 2. **Select** — keep only findings with a reachable consequence; write the rest to `dropped[]`.
 3. **Certify** — re-read the line at HEAD, confirm it is in the diff, write the evidence, then `comments.py add` (which validates and verifies) and `comments.py verify`.
 4. **Emit** — render `mr-comments.md` and present the path, footer, dropped table, and copy blocks.
-5. **Gate 1** — `post_comments.py` preview, then `--create` for author-only draft notes.
-6. **Gate 2** — `--publish`, only for approved comments verified at the current HEAD.
+5. **Approve** — `comments.py approve` is the explicit gate; nothing is posted without it.
+6. **Post** — `post_comments.py` previews the payloads, then `--post` creates the real comments.
 
 ---
 
@@ -89,7 +89,7 @@ Resolution order, first match wins:
 3. `.tmp/`, created only if git already ignores it
 4. `$TMPDIR/to-mr-comments/`
 
-Never written to a tracked path. The filename is stable per MR, so re-initialising resumes the existing plan instead of starting over. If HEAD moved, the state says so and publishing refuses until `verify` is clean again.
+Never written to a tracked path. The filename is stable per MR, so re-initialising resumes the existing plan instead of starting over. If HEAD moved, the state says so and posting refuses until `verify` is clean again.
 
 Schema, lifecycle, and validation rules: [`references/comment-model.md`](references/comment-model.md).
 
@@ -101,7 +101,7 @@ Schema, lifecycle, and validation rules: [`references/comment-model.md`](referen
 |---|---|---|
 | `git` | 2.0+ | Everything |
 | Python | 3.10+ | The four helper scripts (stdlib only) |
-| `glab` | 1.40+ | Draft notes and publishing, including self-hosted GitLab |
+| `glab` | 1.40+ | Posting comments, including self-hosted GitLab |
 
 No `glab`? Generation and rendering still work; posting stops at the `.md`, and the copy blocks paste cleanly into the GitLab UI.
 

@@ -122,6 +122,21 @@ class AtomicSaveTests(unittest.TestCase):
             "mr-comments-Group-Sub-Project-7.json",
         )
 
+    def test_legacy_draft_status_is_read_as_pending(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "state.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 1,
+                        "comments": [{"id": "C1", "status": "draft"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            state = _common.load_state(path)
+        self.assertEqual(state["comments"][0]["status"], "pending")
+
 
 class CliCase(helpers.RepoCase, unittest.TestCase):
     def setUp(self):
@@ -210,7 +225,7 @@ class AddValidationTests(CliCase):
         self.assertEqual(len(state["comments"]), 1)
         comment = state["comments"][0]
         self.assertEqual(comment["id"], "C1")
-        self.assertEqual(comment["status"], "draft")
+        self.assertEqual(comment["status"], "pending")
         self.assertEqual(comment["anchor"]["kind"], "inline")
         self.assertTrue(comment["anchor"]["inDiff"])
         self.assertEqual(comment["anchor"]["verifiedAt"], self.head)
@@ -378,14 +393,14 @@ class LifecycleTests(CliCase):
         state = self.state(path)
         self.assertEqual([comment["id"] for comment in state["comments"]], ["C1", "C2"])
 
-    def test_editing_approved_resets_to_draft(self):
+    def test_editing_approved_resets_to_pending(self):
         path = self.init_state()
         self.add()
         self.cli("approve", "all")
         self.assertEqual(self.state(path)["comments"][0]["status"], "approved")
         self.cli("update", "C1", "--title", "A better title")
         comment = self.state(path)["comments"][0]
-        self.assertEqual(comment["status"], "draft")
+        self.assertEqual(comment["status"], "pending")
         self.assertEqual(comment["title"], "A better title")
 
     def test_reanchor_requires_verification(self):

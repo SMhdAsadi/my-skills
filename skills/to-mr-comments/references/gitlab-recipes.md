@@ -44,7 +44,7 @@ Store `diff_refs.base_sha`, `diff_refs.start_sha`, `diff_refs.head_sha`, `web_ur
 
 `glab api --input -` sends `application/json`. This matters: bracketed form fields (`position[new_line]=118`) are not parsed for POST bodies, so always pass nested JSON.
 
-### Inline diff note
+### Inline discussion note
 
 ```json
 {
@@ -63,9 +63,11 @@ Store `diff_refs.base_sha`, `diff_refs.start_sha`, `diff_refs.head_sha`, `web_ur
 
 ```bash
 glab api --hostname gitlab.example.com --method POST \
-  "projects/team%2Fapi/merge_requests/2340/draft_notes" \
+  "projects/team%2Fapi/merge_requests/2340/discussions" \
   --input - < payload.json
 ```
+
+The discussions endpoint takes the note text under `body`. Do not send `note`; that key belongs to a different payload shape and is rejected here.
 
 Rules:
 
@@ -88,11 +90,11 @@ Rules:
 }
 ```
 
-The file must appear in the MR diff. A binary file is a valid `file` anchor and never an `inline` one.
+The file must appear in the MR diff. A binary file is a valid `file` anchor and never an `inline` one. A file note also goes to `/discussions`; only the position differs.
 
 ### MR-level note
 
-Draft notes require a position, so MR-level comments are regular notes at publish time:
+MR-level comments have no position, so they use the notes endpoint:
 
 ```bash
 glab api --hostname gitlab.example.com --method POST \
@@ -104,35 +106,35 @@ glab api --hostname gitlab.example.com --method POST \
 { "body": "### Should the new flag stay public?\n\nThe branch adds a public flag…" }
 ```
 
-MR-level notes go through the same dedupe check as draft notes.
+MR-level notes go through the same dedupe check as discussions.
 
 ---
 
-## Draft notes
+## Posting
 
-`glab` has no dedicated draft-note subcommand, so the REST endpoints are the interface.
+One gate: preview with no flags, then `--post` after explicit approval. There is no staging endpoint; every write is a real comment.
 
 ```bash
-# Create (author-only; invisible to the team)
-glab api --hostname gitlab.example.com --method POST \
-  "projects/team%2Fapi/merge_requests/2340/draft_notes" --input - < payload.json
+# Preview: prints the exact endpoint and payload per comment. No network.
+python3 scripts/post_comments.py
 
-# List pending drafts (used for idempotent --create)
-glab api --hostname gitlab.example.com \
-  "projects/team%2Fapi/merge_requests/2340/draft_notes?per_page=100"
+# Post every approved comment.
+python3 scripts/post_comments.py --post
 
-# Publish one
-glab api --hostname gitlab.example.com --method PUT \
-  "projects/team%2Fapi/merge_requests/2340/draft_notes/987/publish" --input - <<< '{}'
-
-# Publish every pending draft
-glab api --hostname gitlab.example.com --method POST \
-  "projects/team%2Fapi/merge_requests/2340/draft_notes/bulk_publish" --input - <<< '{}'
+# Retry a single comment after a partial failure.
+python3 scripts/post_comments.py --post --one C2
 ```
 
-`bulk_publish` publishes **all** pending drafts on the MR, including any the user created manually. `post_comments.py` uses per-note `PUT` when the state knows about an unapproved draft, and bulk only when every pending draft belongs to the approved set.
+`--post` refuses unless HEAD equals the state HEAD, every selected comment is `approved`, and every anchor verifies at that HEAD. A comment whose near-identical discussion is already live is refused and skipped, not repeated.
 
-A draft note is the default staging area: it is visible only to its author, so a wrong comment can be deleted without notifying anyone.
+**A 204 is success.** GitLab answers `204 No Content` for a write that returns no body. `glab_json` returns `{}` for that case and the comment is recorded as posted; treating the empty body as a parse error would look like a failure and invite a retry that duplicates the note.
+
+The response tells you where the note landed:
+
+- `/discussions` → `{ "id": "<discussion-id>", "notes": [{ "id": <note-id>, … }] }`
+- `/notes` → `{ "id": <note-id>, … }`
+
+Store `posted.noteId` (and `posted.discussionId` when present) and print `#note_<note-id>` against the MR's `web_url`.
 
 ---
 
@@ -145,7 +147,9 @@ glab api --hostname gitlab.example.com \
   "projects/team%2Fapi/merge_requests/2340/discussions?per_page=100&page=1"
 ```
 
-Flatten every `discussions[].notes[]`. A note is comparable when `position.new_path` / `position.new_line` match the comment's anchor.
+Flatten every `discussions[].notes[]`, skipping notes where `system` is true: system notes are join/rename events, not review comments.
+
+A note is comparable when `position.new_path` / `position.new_line` match the comment's anchor.
 
 Normalise before comparing:
 
@@ -156,7 +160,7 @@ Normalise before comparing:
 
 Compare the normalised comment body and the normalised note body with `difflib.SequenceMatcher`. A ratio of **0.9 or higher** is the same finding. Record a `skipped-duplicate` event and store the existing note id; do not post again.
 
-Idempotence has a second layer: `--create` skips any comment whose `posted.draftNoteId` already exists. Re-running the command creates zero duplicates.
+Idempotence has a second layer: `--post` skips any comment that already carries a `posted.noteId`, including the one it stored when it matched a live duplicate. Re-running the command creates zero duplicates.
 
 ---
 
@@ -187,10 +191,11 @@ if (max > min) {
 | `401` / `403` | Missing or under-scoped token. | Report the exact command. The token needs `api` scope for the target host. Do not retry. |
 | `404` | Wrong project path, IID, or host. | Re-run `init --from-mr`; check the URL-encoded project path. |
 | `409` / `422` | Duplicate note, locked MR, or invalid body. | Report the comment id and the response body. Do not loop. |
+| `204 No Content` on a write | The write succeeded with no body. | Treat as success, store what you have, never retry. |
 | `glab: command not found` | CLI unavailable. | Stop at `mr-comments.md`; copy-paste still works. |
 | Non-JSON output | A proxy or auth page answered instead of the API. | Treat as an error; print the first 200 characters. |
 
-No failure path publishes a partial batch. Created draft ids are saved before the next request, so a retry resumes instead of duplicating.
+No failure path posts a partial batch silently. Created note ids are saved before the next request, and the error names what was already posted; `--post --one C2` retries exactly one comment.
 
 ---
 

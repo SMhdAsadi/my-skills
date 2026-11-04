@@ -27,7 +27,7 @@ CREATABLE_SCRATCH = ".tmp"
 SEVERITIES = ("blocking", "correctness", "maintainability", "nit")
 SEVERITY_ORDER = {"blocking": 0, "correctness": 1, "maintainability": 2, "nit": 3}
 TYPES = ("blocker", "question", "suggestion", "follow-up", "test-gap")
-STATUSES = ("draft", "approved", "dropped", "posted")
+STATUSES = ("pending", "approved", "dropped", "posted")
 DECISIONS = ("agreed", "open", "rejected", "hypothesis")
 CONFIDENCES = ("high", "medium", "low")
 SOURCES = ("conversation", "diff")
@@ -39,8 +39,7 @@ EVENT_KINDS = (
     "verified",
     "approved",
     "dropped",
-    "draft-created",
-    "published",
+    "posted",
     "skipped-duplicate",
 )
 
@@ -156,7 +155,12 @@ def load_state(path: Path) -> dict:
             f"No comment state at {path}. Run `comments.py init` first."
         )
     with path.open(encoding="utf-8") as handle:
-        return json.load(handle)
+        state = json.load(handle)
+    # Accept a legacy `draft` status on read; every write uses `pending`.
+    for comment in state.get("comments", []) or []:
+        if comment.get("status") == "draft":
+            comment["status"] = "pending"
+    return state
 
 
 def save_state(path: Path, state: dict) -> None:

@@ -698,7 +698,7 @@ def cmd_add(args: argparse.Namespace) -> int:
 
     comment = {
         "id": "C0",
-        "status": "draft",
+        "status": "pending",
         "type": args.type,
         "severity": args.severity,
         "anchor": anchor,
@@ -713,7 +713,7 @@ def cmd_add(args: argparse.Namespace) -> int:
         "body": body,
         "suggestion": suggestion,
         "long": bool(args.long),
-        "posted": {"draftNoteId": None, "noteId": None, "postedAt": None},
+        "posted": {"noteId": None, "discussionId": None, "postedAt": None},
     }
     validate_comment(comment, state)
 
@@ -806,7 +806,7 @@ def cmd_update(args: argparse.Namespace) -> int:
     validate_comment(comment, state)
 
     if comment.get("status") == "approved":
-        comment["status"] = "draft"
+        comment["status"] = "pending"
     add_event(state, "updated", comment["id"])
     save_state(state_path, state)
     print(
@@ -894,7 +894,7 @@ def parse_approval(
 ) -> tuple[list[int], list[int], dict[int, str]]:
     """Parse an approval expression into (approved, skipped, overrides).
 
-    Accepts: "all", "1, 3", "skip 2", "2=APPROVE", "3=DROP", "4=DRAFT".
+    Accepts: "all", "1, 3", "skip 2", "2=APPROVE", "3=DROP", "4=PENDING".
     """
     text = expression.lower().strip()
     text = re.sub(r"^(approve|approved|ok|yes)\b[:,]?\s*", "", text)
@@ -907,7 +907,7 @@ def parse_approval(
     everything = False
 
     actions = {"approve": "APPROVE", "approved": "APPROVE", "drop": "DROP",
-               "draft": "DRAFT"}
+               "pending": "PENDING"}
 
     index = 0
     while index < len(tokens):
@@ -929,7 +929,7 @@ def parse_approval(
             action_name = actions.get(action.lower())
             if action_name is None:
                 raise ScriptError(
-                    f"Unknown action {action!r}; expected APPROVE, DROP, or DRAFT."
+                    f"Unknown action {action!r}; expected APPROVE, DROP, or PENDING."
                 )
             overrides[number_int] = action_name
             selected.add(number_int)
@@ -979,8 +979,8 @@ def cmd_approve(args: argparse.Namespace) -> int:
                 comment["status"] = "dropped"
                 comment["dropReason"] = "dropped by approval expression"
                 newly_dropped.append(comment)
-            elif action == "DRAFT":
-                comment["status"] = "draft"
+            elif action == "PENDING":
+                comment["status"] = "pending"
             else:
                 comment["status"] = "approved"
                 newly_approved.append(comment)
@@ -989,7 +989,7 @@ def cmd_approve(args: argparse.Namespace) -> int:
             comment["dropReason"] = "skipped by approval expression"
             newly_dropped.append(comment)
         elif comment.get("status") == "approved":
-            comment["status"] = "draft"
+            comment["status"] = "pending"
             unapproved.append(comment)
 
     add_event(

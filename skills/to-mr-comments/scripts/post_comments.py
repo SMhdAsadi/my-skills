@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Stage and publish rendered comments as GitLab notes.
+"""Preview and post rendered comments to a GitLab merge request.
 
-No flag  → preview the exact payloads and positions. Zero network calls.
---create → create GitLab draft notes (author-only) for draft/approved comments.
---publish → publish approved draft notes and post MR-level notes.
+No flag → preview the exact payloads and positions. Zero network calls.
+--post  → create the real comments: discussions for inline/file anchors,
+          regular notes for MR-level comments.
+--one C2 → restrict the run to one comment.
 
-Every gate is checked before the first network call: HEAD must match the state,
-anchors must be clean, and only approved comments may be published.
+One gate. Every check runs before the first write: HEAD must equal the state
+HEAD, every selected comment must be approved, every anchor must verify at that
+HEAD, and a near-identical live discussion is skipped instead of repeated.
 """
 
 from __future__ import annotations
@@ -49,13 +51,16 @@ def _diff_refs(state: dict) -> dict:
     if missing:
         raise ScriptError(
             "diff refs are missing from the state. Re-run "
-            "`comments.py init --from-mr` before creating GitLab notes."
+            "`comments.py init --from-mr` before posting comments."
         )
     return refs
 
 
-def build_draft_payload(comment: dict, state: dict) -> dict | None:
-    """Build a draft-note payload, or None for an MR-level comment."""
+def build_discussion_payload(comment: dict, state: dict) -> dict | None:
+    """Build a discussion payload, or None for an MR-level comment.
+
+    The discussions endpoint takes the note text under `body`, not `note`.
+    """
     anchor = comment.get("anchor") or {}
     kind = anchor.get("kind")
     if kind == "mr":
@@ -89,34 +94,33 @@ def build_draft_payload(comment: dict, state: dict) -> dict | None:
 
 
 def build_note_payload(comment: dict, state: dict) -> dict:
-    """A regular MR note carries no position."""
+    """A regular MR note carries no position and takes the text under `body`."""
     return {"body": comments_cmd.body_for(comment, "summary")}
+
+
+def post_endpoint(state: dict, comment: dict) -> str:
+    if (comment.get("anchor") or {}).get("kind") == "mr":
+        return mr_endpoint(state, "/notes")
+    return mr_endpoint(state, "/discussions")
 
 
 def preview_entries(state: dict, one: str | None = None) -> list[dict]:
     entries = []
-    for comment in creatable(state, one):
-        anchor = comment.get("anchor") or {}
-        if anchor.get("kind") == "mr":
-            entries.append(
-                {
-                    "id": comment["id"],
-                    "kind": "mr",
-                    "method": "POST",
-                    "endpoint": mr_endpoint(state, "/notes"),
-                    "payload": build_note_payload(comment, state),
-                }
-            )
+    for comment in postable(state, one):
+        if (comment.get("anchor") or {}).get("kind") == "mr":
+            payload = build_note_payload(comment, state)
         else:
-            entries.append(
-                {
-                    "id": comment["id"],
-                    "kind": anchor.get("kind"),
-                    "method": "POST",
-                    "endpoint": mr_endpoint(state, "/draft_notes"),
-                    "payload": build_draft_payload(comment, state),
-                }
-            )
+            payload = build_discussion_payload(comment, state)
+        entries.append(
+            {
+                "id": comment["id"],
+                "status": comment.get("status"),
+                "kind": (comment.get("anchor") or {}).get("kind"),
+                "method": "POST",
+                "endpoint": post_endpoint(state, comment),
+                "payload": payload,
+            }
+        )
     return entries
 
 
@@ -132,30 +136,16 @@ def normalize_id(cid: str | None) -> str | None:
     return text if text.startswith("C") else f"C{text}"
 
 
-def creatable(state: dict, one: str | None = None) -> list[dict]:
+def postable(state: dict, one: str | None = None) -> list[dict]:
+    """Comments that still need a note: not dropped, not posted, no note yet."""
     wanted = normalize_id(one)
     result = []
     for comment in state.get("comments", []):
         if wanted and comment.get("id") != wanted:
             continue
-        if comment.get("status") not in ("draft", "approved"):
+        if comment.get("status") in ("dropped", "posted"):
             continue
-        posted = comment.get("posted") or {}
-        if posted.get("draftNoteId") or posted.get("noteId"):
-            continue
-        result.append(comment)
-    return result
-
-
-def publishable(state: dict, one: str | None = None) -> list[dict]:
-    wanted = normalize_id(one)
-    result = []
-    for comment in state.get("comments", []):
-        if wanted and comment.get("id") != wanted:
-            continue
-        if comment.get("status") != "approved":
-            continue
-        if (comment.get("posted") or {}).get("postedAt"):
+        if (comment.get("posted") or {}).get("noteId"):
             continue
         result.append(comment)
     return result
@@ -202,6 +192,24 @@ def find_duplicate_note(comment: dict, notes: list[dict]) -> dict | None:
     return None
 
 
+def note_ids(response) -> tuple[int | None, str | None]:
+    """Return `(note_id, discussion_id)` from a note or a discussion response."""
+    if not isinstance(response, dict):
+        return None, None
+    notes = response.get("notes")
+    if isinstance(notes, list):
+        note_id = notes[0].get("id") if notes else None
+        return note_id, response.get("id")
+    return response.get("id"), None
+
+
+def note_link(state: dict, note_id) -> str:
+    if not note_id:
+        return ""
+    web_url = (state.get("mr") or {}).get("webUrl") or ""
+    return f"{web_url}#note_{note_id}"
+
+
 # ---------------------------------------------------------------------------
 # glab transport
 # ---------------------------------------------------------------------------
@@ -235,11 +243,20 @@ def glab_json(host: str, method: str, endpoint: str, payload=None):
                 f"The token for {host} needs `api` scope."
             ) from error
         raise ScriptError(f"`{' '.join(cmd)}` failed:\n{message}") from error
+
+    stdout = (proc.stdout or "").strip()
+    if not stdout:
+        # GitLab answers 204 No Content for writes that return no body. The
+        # write succeeded; treating that as a parse failure invites a retry
+        # that would duplicate the note.
+        if method != "GET":
+            return {}
+        raise ScriptError(f"`{' '.join(cmd)}` returned an empty response.")
     try:
-        return json.loads(proc.stdout)
+        return json.loads(stdout)
     except json.JSONDecodeError as error:
         raise ScriptError(
-            f"`{' '.join(cmd)}` returned non-JSON output: {proc.stdout[:200]!r}"
+            f"`{' '.join(cmd)}` returned non-JSON output: {stdout[:200]!r}"
         ) from error
 
 
@@ -247,12 +264,8 @@ def request(state: dict, method: str, endpoint: str, payload=None):
     return glab_json(state["mr"]["host"], method, endpoint, payload)
 
 
-def list_draft_notes(state: dict) -> list[dict]:
-    data = request(state, "GET", mr_endpoint(state, "/draft_notes?per_page=100"))
-    return data if isinstance(data, list) else []
-
-
 def list_notes(state: dict) -> list[dict]:
+    """Flatten every live discussion note, keeping its discussion id."""
     notes: list[dict] = []
     for page in range(1, 21):
         data = request(
@@ -264,6 +277,7 @@ def list_notes(state: dict) -> list[dict]:
             break
         for discussion in data:
             for note in discussion.get("notes") or []:
+                note.setdefault("discussion_id", discussion.get("id"))
                 notes.append(note)
         if len(data) < 100:
             break
@@ -319,114 +333,23 @@ def verify_selected(state: dict, selected: list[dict], root: Path, head: str) ->
 def cmd_preview(state: dict, one: str | None) -> int:
     entries = preview_entries(state, one)
     if not entries:
-        print("Nothing to stage: no draft or approved comments without a posted note.")
+        print("Nothing to post: no pending or approved comments without a note.")
         return 0
     for entry in entries:
-        print(f"{entry['id']}  {entry['kind']:<7} {entry['method']} {entry['endpoint']}")
+        print(
+            f"{entry['id']}  {entry['status']:<8} {entry['kind']:<7} "
+            f"{entry['method']} {entry['endpoint']}"
+        )
     print("\nPayloads:\n")
     print(json.dumps(entries, indent=2, ensure_ascii=False))
     print(
-        "\nPreview only. Re-run with --create to create author-only draft notes."
+        "\nPreview only. Nothing was sent. After explicit approval, re-run "
+        "with --post."
     )
     return 0
 
 
-def cmd_create(state_path: Path, state: dict, one: str | None) -> int:
-    root, head = ensure_head(state)
-    selected = creatable(state, one)
-    if not selected:
-        print("Nothing to create: no draft or approved comments without a draft note.")
-        return 0
-
-    verify_selected(state, selected, root, head)
-
-    existing_drafts = list_draft_notes(state)
-    existing_ids = {note.get("id") for note in existing_drafts}
-    notes = list_notes(state)
-
-    created: list[str] = []
-    for comment in selected:
-        posted = comment.setdefault("posted", {})
-        draft_id = posted.get("draftNoteId")
-        if draft_id and draft_id in existing_ids:
-            continue
-        if draft_id and draft_id not in existing_ids:
-            # The draft was published or deleted outside this run.
-            continue
-        if posted.get("noteId"):
-            continue
-
-        duplicate = find_duplicate_note(comment, notes)
-        if duplicate:
-            posted["noteId"] = duplicate.get("id")
-            add_event(
-                state,
-                "skipped-duplicate",
-                f"{comment['id']} already discussed in note {duplicate.get('id')}",
-            )
-            save_state(state_path, state)
-            print(
-                f"{comment['id']}  skipped-duplicate  existing note "
-                f"{duplicate.get('id')}"
-            )
-            continue
-
-        if (comment.get("anchor") or {}).get("kind") == "mr":
-            # Draft notes require a position; MR-level notes post at publish time.
-            continue
-
-        payload = build_draft_payload(comment, state)
-        try:
-            response = request(state, "POST", mr_endpoint(state, "/draft_notes"), payload)
-        except ScriptError as error:
-            created_text = ", ".join(created) if created else "none"
-            hint = ""
-            if "400" in str(error):
-                hint = " The position may be invalid; run `comments.py verify` first."
-            raise ScriptError(
-                f"Creating {comment['id']} failed. Draft notes created before the "
-                f"failure: {created_text}. Nothing was published.{hint}\n{error}"
-            ) from error
-        posted["draftNoteId"] = (response or {}).get("id")
-        created.append(comment["id"])
-        add_event(
-            state, "draft-created", f"{comment['id']} draft={posted.get('draftNoteId')}"
-        )
-        save_state(state_path, state)
-        print(f"{comment['id']}  draft-created  draft_note={posted.get('draftNoteId')}")
-
-    if created:
-        print(
-            f"\n{len(created)} draft note(s) created. They are visible only to you. "
-            "Run --publish when you are ready."
-        )
-    else:
-        print("No new draft notes were created.")
-    return 0
-
-
-def _map_published(result, comments: list[dict]) -> dict:
-    """Map published notes back to comments by path and line when possible."""
-    mapping: dict[str, int] = {}
-    if not isinstance(result, list):
-        return mapping
-    by_position = {}
-    for note in result:
-        if not isinstance(note, dict):
-            continue
-        position = note.get("position") or {}
-        key = (position.get("new_path"), position.get("new_line"))
-        if key != (None, None):
-            by_position[key] = note.get("id")
-    for comment in comments:
-        anchor = comment.get("anchor") or {}
-        key = (anchor.get("path"), anchor.get("line"))
-        if key in by_position:
-            mapping[comment["id"]] = by_position[key]
-    return mapping
-
-
-def cmd_publish(state_path: Path, state: dict, one: str | None) -> int:
+def cmd_post(state_path: Path, state: dict, one: str | None) -> int:
     root, head = ensure_head(state)
     wanted = normalize_id(one)
 
@@ -438,122 +361,106 @@ def cmd_publish(state_path: Path, state: dict, one: str | None) -> int:
         if not matches:
             raise ScriptError(f"{wanted} does not exist.")
         candidate = matches[0]
-        if candidate.get("status") != "approved" or (
+        if candidate.get("status") == "dropped":
+            raise ScriptError(f"{wanted} was dropped; nothing to post.")
+        if candidate.get("status") == "posted" or (
             candidate.get("posted") or {}
-        ).get("postedAt"):
-            raise ScriptError(
-                f"{wanted} is not approved or was already posted; refusing to publish."
-            )
+        ).get("noteId"):
+            raise ScriptError(f"{wanted} is already posted; nothing to do.")
 
-    selected = publishable(state, one)
+    selected = postable(state, one)
     if not selected:
-        print("Nothing to publish: no approved comments are waiting.")
+        print("Nothing to post: no approved comments are waiting.")
         return 0
 
-    stale = [
-        comment["id"]
-        for comment in selected
-        if (comment.get("anchor") or {}).get("verifiedAt") != head
+    unapproved = [
+        comment["id"] for comment in selected
+        if comment.get("status") != "approved"
     ]
-    if stale:
+    if unapproved:
         raise ScriptError(
-            f"Verification is stale for {', '.join(stale)}. Run "
-            "`comments.py verify` at the current HEAD before publishing."
+            f"{', '.join(unapproved)} not approved. Run `comments.py approve` "
+            "first: --post never sends a pending comment."
         )
 
-    draft_comments = [
-        comment
-        for comment in selected
-        if (comment.get("anchor") or {}).get("kind") != "mr"
-    ]
-    mr_comments = [
-        comment for comment in selected
-        if (comment.get("anchor") or {}).get("kind") == "mr"
-    ]
+    verify_selected(state, selected, root, head)
+    notes = list_notes(state)
 
-    for comment in draft_comments:
-        posted = comment.get("posted") or {}
-        if not posted.get("draftNoteId"):
-            raise ScriptError(
-                f"{comment['id']} has no draft note. Run `post_comments.py --create` first."
-            )
-
-    # GitLab's bulk endpoint publishes every pending draft, including drafts the
-    # user has not approved. Fall back to per-note publishing when the state
-    # knows about a draft outside the approved set.
-    approved_ids = {comment["id"] for comment in selected}
-    unapproved_drafts = [
-        comment for comment in state.get("comments", [])
-        if (comment.get("posted") or {}).get("draftNoteId")
-        and comment.get("id") not in approved_ids
-        and comment.get("status") != "posted"
-    ]
-    use_bulk = not wanted and not unapproved_drafts and len(draft_comments) > 1
-
-    published_map: dict[str, int] = {}
-    if draft_comments:
-        if wanted or not use_bulk:
-            for comment in draft_comments:
-                draft_id = comment["posted"]["draftNoteId"]
-                response = request(
-                    state,
-                    "PUT",
-                    mr_endpoint(state, f"/draft_notes/{draft_id}/publish"),
-                    {},
-                )
-                mapped = _map_published(
-                    response if isinstance(response, list) else [response],
-                    [comment],
-                )
-                published_map.update(mapped)
-                comment["status"] = "posted"
-                comment.setdefault("posted", {})["postedAt"] = now_iso()
-                if comment["id"] in mapped:
-                    comment["posted"]["noteId"] = mapped[comment["id"]]
-                add_event(state, "published", f"{comment['id']}")
-                save_state(state_path, state)
-        else:
-            response = request(
-                state, "POST", mr_endpoint(state, "/draft_notes/bulk_publish"), {}
-            )
-            published_map = _map_published(response, draft_comments)
-            for comment in draft_comments:
-                comment["status"] = "posted"
-                comment.setdefault("posted", {})["postedAt"] = now_iso()
-                if comment["id"] in published_map:
-                    comment["posted"]["noteId"] = published_map[comment["id"]]
-                add_event(state, "published", f"{comment['id']}")
-            save_state(state_path, state)
-
-    for comment in mr_comments:
-        payload = build_note_payload(comment, state)
-        try:
-            response = request(state, "POST", mr_endpoint(state, "/notes"), payload)
-        except ScriptError as error:
-            raise ScriptError(
-                "Draft notes were published, but the MR-level note for "
-                f"{comment['id']} failed. Review the MR before retrying.\n{error}"
-            ) from error
-        comment["status"] = "posted"
-        comment.setdefault("posted", {})["noteId"] = (response or {}).get("id")
-        comment["posted"]["postedAt"] = now_iso()
-        add_event(state, "published", f"{comment['id']}")
-        save_state(state_path, state)
-
-    print(f"Published {len(selected)} comment(s) at {head[:7]}.")
+    posted_ids: list[str] = []
+    skipped: list[str] = []
     for comment in selected:
-        note_id = (comment.get("posted") or {}).get("noteId")
-        suffix = f" note={note_id}" if note_id else ""
-        print(f"  {comment['id']}{suffix}")
+        duplicate = find_duplicate_note(comment, notes)
+        if duplicate:
+            comment.setdefault("posted", {}).update(
+                {
+                    "noteId": duplicate.get("id"),
+                    "discussionId": duplicate.get("discussion_id"),
+                }
+            )
+            add_event(
+                state,
+                "skipped-duplicate",
+                f"{comment['id']} already discussed in note {duplicate.get('id')}",
+            )
+            save_state(state_path, state)
+            skipped.append(comment["id"])
+            print(
+                f"{comment['id']}  skipped-duplicate  existing note "
+                f"{duplicate.get('id')}"
+            )
+            continue
+
+        endpoint = post_endpoint(state, comment)
+        if (comment.get("anchor") or {}).get("kind") == "mr":
+            payload = build_note_payload(comment, state)
+        else:
+            payload = build_discussion_payload(comment, state)
+
+        try:
+            response = request(state, "POST", endpoint, payload)
+        except ScriptError as error:
+            done = ", ".join(posted_ids) if posted_ids else "none"
+            hint = ""
+            if "400" in str(error):
+                hint = " The position may be invalid; run `comments.py verify` first."
+            raise ScriptError(
+                f"Posting {comment['id']} failed. Posted before the failure: "
+                f"{done}. Retry just this comment with `--one {comment['id']}`."
+                f"{hint}\n{error}"
+            ) from error
+
+        note_id, discussion_id = note_ids(response)
+        comment["status"] = "posted"
+        comment.setdefault("posted", {}).update(
+            {
+                "noteId": note_id,
+                "discussionId": discussion_id,
+                "postedAt": now_iso(),
+            }
+        )
+        posted_ids.append(comment["id"])
+        add_event(state, "posted", f"{comment['id']} note={note_id}")
+        save_state(state_path, state)
+        link = note_link(state, note_id)
+        print(f"{comment['id']}  posted  {link}" if link else f"{comment['id']}  posted")
+
+    if posted_ids:
+        print(f"\nPosted {len(posted_ids)} comment(s) at {head[:7]}.")
+    else:
+        print("No new comments were posted.")
+    if skipped:
+        print(
+            f"Skipped {len(skipped)} duplicate(s): "
+            f"{', '.join(skipped)}. Nothing was repeated."
+        )
     return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Preview, stage, and publish GitLab MR comments."
+        description="Preview and post GitLab MR comments."
     )
-    parser.add_argument("--create", action="store_true", help="Create draft notes")
-    parser.add_argument("--publish", action="store_true", help="Publish approved notes")
+    parser.add_argument("--post", action="store_true", help="Post approved comments")
     parser.add_argument("--one", help="Limit to one comment id, e.g. C2")
     parser.add_argument("--state", help="Explicit path to the state JSON")
     return parser
@@ -562,16 +469,12 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    if args.create and args.publish:
-        raise ScriptError("Pass either --create or --publish, not both.")
 
     state_path = comments_cmd.resolve_state_file(args.state)
     state = load_state(state_path)
 
-    if args.create:
-        return cmd_create(state_path, state, args.one)
-    if args.publish:
-        return cmd_publish(state_path, state, args.one)
+    if args.post:
+        return cmd_post(state_path, state, args.one)
     return cmd_preview(state, args.one)
 
 

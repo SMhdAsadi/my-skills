@@ -22,7 +22,7 @@
   "comments": [
     {
       "id": "C1",
-      "status": "draft",
+      "status": "pending",
       "type": "suggestion",
       "severity": "maintainability",
       "anchor": {
@@ -46,7 +46,7 @@
       "body": "A zero-width range divides by zero here and pushes `NaN` into the value store.",
       "suggestion": "if (max > min) {\n  apply(value);\n}",
       "long": false,
-      "posted": { "draftNoteId": null, "noteId": null, "postedAt": null }
+      "posted": { "noteId": null, "discussionId": null, "postedAt": null }
     }
   ],
   "dropped": [],

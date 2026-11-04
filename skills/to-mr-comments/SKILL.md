@@ -1,23 +1,23 @@
 ---
 name: to-mr-comments
-description: "Turns a review conversation or branch diff into a small set of verified, copy-pasteable GitLab merge request comments. Re-checks anchors at HEAD, merges duplicates, enforces a budget, and can stage them as GitLab draft notes. Use when the user wants to write MR comments, turn review findings into comments, or post a review."
+description: "Turns a review conversation or branch diff into a small set of verified, copy-pasteable GitLab merge request comments. Re-checks anchors at HEAD, merges duplicates, enforces a budget, and posts them to the merge request after explicit approval. Use when the user wants to write MR comments, turn review findings into comments, or post a review."
 license: MIT
 compatibility: "git >= 2.0; glab >= 1.40 (only for posting)"
 metadata:
   author: SMhd
-  version: "1.0.0"
+  version: "2.0.0"
   tags: [git, gitlab, code-review, merge-requests, developer-tools]
 ---
 
 # To GitLab MR Comments
 
-Turn a review conversation or a branch diff into a handful of comments that are wanted, true, anchored, sized, and safe to publish. A comment is a small artifact: it names one change, cites one fact, and fits in a thread without becoming an essay.
+Turn a review conversation or a branch diff into a handful of comments that are wanted, true, anchored, sized, and safe to post. A comment is a small artifact: it names one change, cites one fact, and fits in a thread without becoming an essay.
 
 Five invariants:
 
 1. **A comment is a claim.** Without citable evidence it is not emitted.
 2. **Anchors are verified at HEAD** and must fall inside the MR diff. A moved line is re-anchored or dropped, never guessed.
-3. **Nothing is published without explicit approval.** GitLab draft notes — visible only to you — are the default staging area.
+3. **Nothing is posted without explicit approval; there is no draft stage.** A preview shows the exact payloads, and only `--post` sends them.
 4. **Comments reflect the user's decisions,** not the agent's opinions. `open` becomes a question; `hypothesis` never becomes a comment.
 5. **Never copy credentials, tokens, customer data, internal URLs, or private metrics** into a comment, the evidence, or the state file.
 
@@ -106,6 +106,8 @@ python3 scripts/comments.py add \
 
 5. After the batch, run `python3 scripts/comments.py verify`.
 
+A new comment enters as `pending`. Only `approve` makes it eligible for posting; nothing else moves it.
+
 If verification returns `moved`, `out-of-diff`, or `missing`: re-anchor with `update --reanchor` or `drop` it. Never post around a failed anchor.
 
 ## 5. Emit
@@ -123,20 +125,22 @@ Write `mr-comments.md` next to the state file. Present:
 
 Inline mode puts `**Anchor:**` outside the box and a bold title inside it, with no `###` heading — GitLab renders one as a document heading in a thread. Summary mode uses `### <title>` and `**Target:**` inside the box for MR-level notes.
 
+Nothing here touches the network: every comment is still `pending` until §6.
+
 ## 6. Post (optional)
 
-Only when the user asks. The path is two gates, not one.
+Only when the user asks, and only one gate: preview → explicit approval → `--post`.
 
 ```bash
 python3 scripts/post_comments.py                    # preview payloads; no network
-python3 scripts/post_comments.py --create           # author-only draft notes
-python3 scripts/post_comments.py --publish          # visible to the team
-python3 scripts/post_comments.py --create --one C2  # a single comment
+python3 scripts/comments.py approve "all"           # or "1, 3" / "skip 2"
+python3 scripts/post_comments.py --post             # create the real comments
+python3 scripts/post_comments.py --post --one C2    # a single comment
 ```
 
-Order: preview → show the payload list → ask → `--create` → show the draft links → ask → `--publish`.
+Order: preview → show the payload list → ask → `approve` → `--post` → show a `#note_<id>` link per comment.
 
-`--create` refuses when HEAD moved, an anchor is dirty, or a near-identical note already exists. `--publish` refuses unapproved comments, stale verification, and a HEAD that no longer matches the state. Show the dedupe report: anything a human already wrote is skipped, not repeated.
+Inline and file anchors become discussions (`POST .../discussions` with `body` and `position`); MR-level comments become notes (`POST .../notes` with `body`). `--post` refuses unless HEAD equals the state HEAD, every selected comment is `approved`, and every anchor verifies at that HEAD. A comment is also refused when a near-identical live discussion already exists: it is skipped and reported, never repeated. Partial posting is limited to `--one`.
 
 If `glab` is unavailable, stop at the `.md`. Do not attempt a workaround or a direct HTTP call.
 
@@ -151,7 +155,7 @@ python3 scripts/comments.py approve "all, skip C3"    # or "1, 3" / "2=APPROVE"
 python3 scripts/comments.py render
 ```
 
-`update` on an approved comment resets it to `draft`, so approval is always explicit. Re-render after every change. Re-run `verify` after any rebase or amend, then `render` again: the footer's SHA is the proof of freshness.
+`update` on an approved comment resets it to `pending`, so approval is always explicit. Re-render after every change. Re-run `verify` after any rebase or amend, then `render` again: the footer's SHA is the proof of freshness. After posting, `--one C2` retries a single comment; a batch retry is never implicit.
 
 ## 8. Degradation
 
@@ -191,5 +195,5 @@ Write in the language of the user's first prompt and store it in `lang`.
 ## References
 
 - [`references/comment-model.md`](references/comment-model.md) — schema v1, anchor kinds, statuses, validation rules, selection policy.
-- [`references/gitlab-recipes.md`](references/gitlab-recipes.md) — `glab api` payloads, draft notes, dedupe, error table.
+- [`references/gitlab-recipes.md`](references/gitlab-recipes.md) — `glab api` payloads, discussion creation, dedupe, the 204 rule, error table.
 - [`references/examples.md`](references/examples.md) — four certified comments and one rejected anti-example.

@@ -7,6 +7,19 @@ Each release is tagged `to-mr-comments-v<version>` and published on the [Release
 
 ---
 
+## [2.0.0] - 2026-11-04
+
+### Removed
+
+- **GitLab draft notes are gone.** `--create`, `--publish`, `bulk_publish`, `posted.draftNoteId`, and the author-only staging stage no longer exist. Posting is one gate: preview with no flags, explicit `comments.py approve`, then `post_comments.py --post`. Inline and file anchors now create real discussions (`POST .../discussions` with `body` and `position`); MR-level comments keep `POST .../notes` with `body`. The pre-approval status is renamed `draft` → `pending` (legacy values are accepted on read and written back as `pending`), and `update` on an approved comment resets it to `pending`.
+
+### Fixed
+
+- **`glab_json` treats an empty successful write as success.** GitLab answers `204 No Content`; the old parser raised "returned non-JSON output: ''" *after* the note was created, which looked like a failure and invited a duplicate retry. Non-GET responses with an empty body now return `{}`, and a test pins the no-retry behavior.
+- **Payload key correctness is enforced by shape.** The removed draft-note builder sent `body` where GitLab required `note`; with the endpoint gone, `/discussions` and `/notes` both take `body`, and the payload tests assert the exact key set.
+
+---
+
 ## [1.0.0] - 2026-11-04
 
 ### Added

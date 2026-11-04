@@ -38,6 +38,12 @@ Nine review comments, and at least two of them contradict each other. This fetch
 
 > *"Triage the review comments on this MR."*
 
+### [To MR comments](skills/to-mr-comments/)
+
+The opposite direction: you have findings, not threads. This turns what you actually agreed on — or what you found in the branch diff — into a small set of GitLab comments that cite the code, sit on a line that still exists, and fit in a thread. It re-checks every anchor at the current commit, collapses duplicates, enforces a budget, and records what it rejected so "no comment" stays auditable. With `glab`, you can stage them as draft notes only you can see, then publish when you're ready.
+
+> *"Turn these findings into MR comments — keep it to five."*
+
 ### [Better Persian](skills/better-persian/)
 
 Persian that reads like a person wrote it, not a translation engine. It picks the right register for the job — formal proposal, UI microcopy, casual message — fixes half-spaces, glyphs, and quotation marks, and removes the bureaucratic tells that make machine-written Farsi obvious.

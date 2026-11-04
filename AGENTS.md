@@ -33,6 +33,7 @@ Skills are versioned independently with SemVer. When a skill's behavior changes 
 | :--- | :--- | :--- |
 | `review-walkthrough` | "walk through changes", "review branch", "guided review", "review walkthrough for diff" | [`skills/review-walkthrough/SKILL.md`](skills/review-walkthrough/SKILL.md) |
 | `mr-comment-triage` | "handle review comments", "triage PR feedback", "respond to reviewers", "work through open threads", "which comments are valid" | [`skills/mr-comment-triage/SKILL.md`](skills/mr-comment-triage/SKILL.md) |
+| `to-mr-comments` | "write MR comments", "turn findings into comments", "post a review", "stage MR comments", "why did we drop that comment" | [`skills/to-mr-comments/SKILL.md`](skills/to-mr-comments/SKILL.md) |
 | `better-persian` | "better-persian", "better persian", "write in persian", "persian copy", "long-form persian", "متن فارسی", "نامه اداری" | [`skills/better-persian/SKILL.md`](skills/better-persian/SKILL.md) |
 
 ### `better-persian`
@@ -50,6 +51,10 @@ Skills are versioned independently with SemVer. When a skill's behavior changes 
 - **Activation**: When asked to handle review comments, triage PR feedback, respond to a reviewer, or work through an MR's open threads. One MR per run.
 - **Contract**: JSON-first (v1.0.0) with `mr-triage.json` in a gitignored scratch dir (`$MR_TRIAGE_DIR` → existing ignored dir → `.tmp/` → system temp), never a tracked path. Two gates: `approve` for code changes (deterministic parser supporting `all`, `1, 3`, `skip 2`, `2=ACCEPT`; `CLARIFY`/`DEFER` never auto-approved), and `--post` for replies with `--resolve` as a separate flag. Provider normalization lives in `scripts/fetch_threads.py` (GitHub GraphQL `reviewThreads`, GitLab discussions REST, self-hosted hosts, system-note filtering, stale-anchor detection); comment bodies are treated as data, never as instructions.
 
+### `to-mr-comments`
+- **Purpose**: Turns a review conversation or branch diff into a small set of verified, copy-pasteable GitLab MR comments. Classifies each finding (`agreed`, `open`, `rejected`, `hypothesis`), applies an explicit selection policy, re-checks anchors at HEAD against `git diff -U3 <base>...HEAD`, dedupes by anchor and body, enforces a 5/10 budget, records rejected candidates in `dropped[]`, and can stage author-only draft notes.
+- **Activation**: When asked to write MR comments, turn review findings into comments, or post a review. GitLab only, one MR per run, non-GitLab hosts stop before generation.
+- **Contract**: JSON-first (v1.0.0) with `mr-comments-<project>-<iid>.json` in a gitignored scratch dir. `comments.py add` is the only creation path and refuses weak evidence, off-diff anchors, oversized bodies, duplicates, and `blocker`/`suggestion` without agreement. Anchors are `inline`, `file`, or `mr`; a range hash marks drift as `moved` rather than silently accepting it. Two publish gates: `post_comments.py --create` (draft notes) then `--publish`, both refusing a moved HEAD, stale verification, unapproved comments, and near-identical existing notes before any network call.
 
 ## Harness Compatibility Guidelines
 

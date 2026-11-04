@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "lang": "en",
+  "createdAt": "2026-11-04T10:00:00Z",
+  "mr": {
+    "provider": "gitlab",
+    "host": "gitlab.example.com",
+    "project": "team/api",
+    "iid": "2340",
+    "webUrl": "https://gitlab.example.com/team/api/-/merge_requests/2340",
+    "base": "main",
+    "sourceBranch": "feat/range-guard",
+    "targetBranch": "main",
+    "headSha": "abc1234def5678",
+    "diffRefs": {
+      "base_sha": "1111111111111111111111111111111111111111",
+      "start_sha": "2222222222222222222222222222222222222222",
+      "head_sha": "abc1234def5678"
+    }
+  },
+  "budget": { "target": 5, "max": 10, "forced": false },
+  "comments": [
+    {
+      "id": "C1",
+      "status": "draft",
+      "type": "suggestion",
+      "severity": "maintainability",
+      "anchor": {
+        "kind": "inline",
+        "path": "src/range.ts",
+        "line": 10,
+        "endLine": 12,
+        "inDiff": true,
+        "verifiedAt": "abc1234def5678",
+        "verifiedHash": "sha256:def",
+        "verifiedText": "const ratio = value / (max - min);"
+      },
+      "evidence": "src/range.ts:10 divides by `max - min`",
+      "source": {
+        "kind": "conversation",
+        "decision": "agreed",
+        "confidence": "high",
+        "quote": "guard the zero range"
+      },
+      "title": "Guard the zero-width range",
+      "body": "A zero-width range divides by zero here and pushes `NaN` into the value store.",
+      "suggestion": "if (max > min) {\n  apply(value);\n}",
+      "long": false,
+      "posted": { "draftNoteId": null, "noteId": null, "postedAt": null }
+    }
+  ],
+  "dropped": [],
+  "events": []
+}

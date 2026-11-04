@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "lang": "en",
+  "createdAt": "2026-11-04T10:00:00Z",
+  "mr": {
+    "provider": "gitlab",
+    "host": "gitlab.example.com",
+    "project": "team/api",
+    "iid": "2340",
+    "webUrl": "https://gitlab.example.com/team/api/-/merge_requests/2340",
+    "base": "main",
+    "sourceBranch": "chore/docs",
+    "targetBranch": "main",
+    "headSha": "abc1234def5678",
+    "diffRefs": {
+      "base_sha": "1111111111111111111111111111111111111111",
+      "start_sha": "2222222222222222222222222222222222222222",
+      "head_sha": "abc1234def5678"
+    }
+  },
+  "budget": { "target": 5, "max": 10, "forced": false },
+  "comments": [],
+  "dropped": [
+    {
+      "claim": "Uniform LTR enforcement across all players",
+      "reason": "unbounded audit; no anchor",
+      "source": "conversation"
+    },
+    {
+      "claim": "Rename every slider prop to match the design tokens",
+      "reason": "preference with no stated consequence",
+      "source": "diff"
+    }
+  ],
+  "events": []
+}

@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "lang": "fa",
+  "createdAt": "2026-11-04T10:00:00Z",
+  "mr": {
+    "provider": "gitlab",
+    "host": "gitlab.example.com",
+    "project": "team/api",
+    "iid": "2340",
+    "webUrl": "https://gitlab.example.com/team/api/-/merge_requests/2340",
+    "base": "main",
+    "sourceBranch": "feat/rtl",
+    "targetBranch": "main",
+    "headSha": "abc1234def5678",
+    "diffRefs": {
+      "base_sha": "1111111111111111111111111111111111111111",
+      "start_sha": "2222222222222222222222222222222222222222",
+      "head_sha": "abc1234def5678"
+    }
+  },
+  "budget": { "target": 5, "max": 10, "forced": false },
+  "comments": [
+    {
+      "id": "C1",
+      "status": "draft",
+      "type": "question",
+      "severity": "maintainability",
+      "anchor": {
+        "kind": "inline",
+        "path": "src/slider/RTL.ts",
+        "line": 24,
+        "endLine": null,
+        "inDiff": true,
+        "verifiedAt": "abc1234def5678",
+        "verifiedHash": "sha256:ghi",
+        "verifiedText": "const offset = width - value;"
+      },
+      "evidence": "src/slider/RTL.ts:24 جهت محاسبه را ثابت فرض می‌کند",
+      "source": {
+        "kind": "conversation",
+        "decision": "open",
+        "confidence": "medium",
+        "quote": "در حالت راست‌به‌چپ چه می‌شود؟"
+      },
+      "title": "جهت محاسبه در حالت راست‌به‌چپ",
+      "body": "این محاسبه فرض می‌کند چیدمان چپ‌به‌راست است.\n\nآیا در حالت راست‌به‌چپ هم عرض کانتینر همان مقدار را برمی‌گرداند؟",
+      "suggestion": null,
+      "long": false,
+      "posted": { "draftNoteId": null, "noteId": null, "postedAt": null }
+    }
+  ],
+  "dropped": [],
+  "events": []
+}

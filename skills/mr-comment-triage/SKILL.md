@@ -5,7 +5,7 @@ license: MIT
 compatibility: "git >= 2.0; gh >= 2.40 (GitHub) or glab >= 1.40 (GitLab)"
 metadata:
   author: SMhd
-  version: "1.0.0"
+  version: "1.1.0"
   tags:
     - git
     - code-review
@@ -61,8 +61,8 @@ It prints the state path, the anchor mix, and the author mix, then exits. The st
 **Where state lives** (never git-tracked, in this order):
 
 1. `$MR_TRIAGE_DIR`
-2. the first *existing* gitignored directory among `.tmp/`, `scratch/`, `.scratch/`
-3. `.tmp/` created, but only if git already ignores it
+2. `mr-comment-triage/` inside the first *existing* gitignored `tmp/`, `.tmp/`, `scratch/`, or `.scratch/`
+3. `.tmp/mr-comment-triage/` created, but only if git already ignores `.tmp/`
 4. system temp (`$TMPDIR/mr-comment-triage`)
 
 Never write state into a tracked directory. When the fallback is used, say the path out loud in the briefing.

@@ -13,8 +13,8 @@ Resolution order, first match wins:
 | Priority | Location | Notes |
 |---|---|---|
 | 1 | `$MR_TRIAGE_DIR` | Explicit override, for CI or a shared workspace. |
-| 2 | `<repo>/.tmp/`, `<repo>/scratch/`, `<repo>/.scratch/` | First one that exists **and** passes `git check-ignore`. |
-| 3 | `<repo>/.tmp/` | Created only when git already ignores that path. |
+| 2 | `<repo>/tmp/mr-comment-triage/`, `<repo>/.tmp/mr-comment-triage/`, `<repo>/scratch/mr-comment-triage/`, `<repo>/.scratch/mr-comment-triage/` | First parent that exists **and** passes `git check-ignore`. The skill-owned subdirectory keeps project files and other skills out of the way. |
+| 3 | `<repo>/.tmp/mr-comment-triage/` | Created only when git already ignores `.tmp/`. |
 | 4 | `$TMPDIR/mr-comment-triage/` | Fallback when the repo has no ignored scratch dir. |
 
 The rule is absolute: **the state file must never appear in `git status`.** A verdict log in the repo would end up in a commit, and a review bot's output is not source code.

@@ -85,8 +85,8 @@ collect ──▶ re-anchor ──▶ verify ──▶ propose ──▶ [gate 1
 Resolution order, first match wins:
 
 1. `$MR_TRIAGE_DIR`
-2. an existing gitignored directory among `.tmp/`, `scratch/`, `.scratch/`
-3. `.tmp/`, created only if git already ignores it
+2. `mr-comment-triage/` inside an existing gitignored `tmp/`, `.tmp/`, `scratch/`, or `.scratch/`
+3. `.tmp/mr-comment-triage/`, created only if git already ignores `.tmp/`
 4. `$TMPDIR/mr-comment-triage/`
 
 It is never written to a tracked path. The filename is stable per target (`github-cli-cli-14783.json`), so re-fetching resumes the existing plan instead of starting over. If HEAD moved between fetches, the state records it and warns that verdicts need re-verification.

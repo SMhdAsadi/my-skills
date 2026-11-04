@@ -321,21 +321,37 @@ class StateDirTests(unittest.TestCase):
 
     def test_creates_ignored_tmp_dir(self):
         directory, source = _common.resolve_state_dir(self.root)
-        self.assertEqual(directory, self.root / ".tmp")
+        self.assertEqual(directory, self.root / ".tmp" / "mr-comment-triage")
         self.assertIn("repo:", source)
         self.assertTrue(directory.is_dir())
+
+    def test_tmp_has_highest_priority(self):
+        (self.root / ".gitignore").write_text(
+            "tmp/\n.tmp/\nscratch/\n.scratch/\n", encoding="utf-8"
+        )
+        for name in ("tmp", ".tmp", "scratch", ".scratch"):
+            (self.root / name).mkdir()
+        directory, source = _common.resolve_state_dir(self.root)
+        self.assertEqual(directory, self.root / "tmp" / "mr-comment-triage")
+        self.assertEqual(source, "repo:tmp")
+
+    def test_unignored_tmp_is_skipped(self):
+        (self.root / ".gitignore").write_text("*.tmp\n", encoding="utf-8")
+        (self.root / "tmp").mkdir()
+        directory, _ = _common.resolve_state_dir(self.root)
+        self.assertEqual(directory, self.root / ".tmp" / "mr-comment-triage")
 
     def test_prefers_existing_ignored_scratch(self):
         (self.root / "scratch").mkdir()
         directory, source = _common.resolve_state_dir(self.root)
-        self.assertEqual(directory, self.root / "scratch")
+        self.assertEqual(directory, self.root / "scratch" / "mr-comment-triage")
         self.assertIn("scratch", source)
 
     def test_skips_existing_but_unignored_directory(self):
         (self.root / ".gitignore").write_text("*.tmp\n", encoding="utf-8")
         (self.root / "scratch").mkdir()
         directory, _ = _common.resolve_state_dir(self.root)
-        self.assertNotEqual(directory, self.root / "scratch")
+        self.assertNotEqual(directory.parent, self.root / "scratch")
 
     def test_falls_back_to_system_temp_when_nothing_is_ignored(self):
         (self.root / ".gitignore").write_text("# nothing\n", encoding="utf-8")

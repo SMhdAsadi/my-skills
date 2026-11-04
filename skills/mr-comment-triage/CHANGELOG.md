@@ -7,6 +7,14 @@ Each release is tagged `mr-comment-triage-v<version>` and published on the [Rele
 
 ---
 
+## [1.1.0] - 2026-11-04
+
+### Changed
+
+- **State location:** `tmp/` is now the highest-priority repo scratch directory when git already ignores it, and artifacts live in a skill-owned subdirectory (`tmp/mr-comment-triage/`) instead of directly in the scratch directory. This keeps state out of a shared `tmp/` and prevents collisions with project files or other skills. The `.tmp/`, `scratch/`, and `.scratch/` candidates follow the same subdirectory rule; a tracked or unignored `tmp/` is still skipped.
+
+---
+
 ## [1.0.0] - 2026-10-26
 
 ### Added

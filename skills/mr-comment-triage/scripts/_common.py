@@ -19,8 +19,9 @@ SCHEMA_VERSION = 1
 STATE_DIRNAME = "mr-comment-triage"
 
 # Repo-local scratch directories we are willing to use, in preference order.
-# `tmp/` is deliberately absent: it is commonly tracked.
-SCRATCH_CANDIDATES = (".tmp", "scratch", ".scratch")
+# `tmp/` is included because many projects keep it gitignored; a tracked or
+# unignored `tmp/` is rejected by the `git check-ignore` test below.
+SCRATCH_CANDIDATES = ("tmp", ".tmp", "scratch", ".scratch")
 # Only this one may be created when it does not exist yet.
 CREATABLE_SCRATCH = ".tmp"
 
@@ -96,6 +97,8 @@ def resolve_state_dir(root: Path | None = None) -> tuple[Path, str]:
 
     Order: explicit override, an existing gitignored repo directory, a
     creatable gitignored repo directory, then the system temp directory.
+    Inside a repo scratch directory the artifacts live in a skill-owned
+    subdirectory, so they never collide with project files or another skill.
     Never returns a path that git would track.
     """
     override = os.environ.get("MR_TRIAGE_DIR")
@@ -109,12 +112,15 @@ def resolve_state_dir(root: Path | None = None) -> tuple[Path, str]:
         for name in SCRATCH_CANDIDATES:
             candidate = root / name
             if candidate.is_dir() and is_gitignored(root, name):
-                return candidate, f"repo:{name}"
+                target = candidate / STATE_DIRNAME
+                target.mkdir(parents=True, exist_ok=True)
+                return target, f"repo:{name}"
 
         creatable = root / CREATABLE_SCRATCH
         if is_gitignored(root, CREATABLE_SCRATCH):
-            creatable.mkdir(parents=True, exist_ok=True)
-            return creatable, f"repo:{CREATABLE_SCRATCH} (created)"
+            target = creatable / STATE_DIRNAME
+            target.mkdir(parents=True, exist_ok=True)
+            return target, f"repo:{CREATABLE_SCRATCH} (created)"
 
     target = Path(tempfile.gettempdir()) / STATE_DIRNAME
     target.mkdir(parents=True, exist_ok=True)

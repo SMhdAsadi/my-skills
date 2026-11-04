@@ -85,8 +85,8 @@ harvest ──▶ select ──▶ certify ──▶ emit ──▶ [approve] �
 Resolution order, first match wins:
 
 1. `$MR_COMMENTS_DIR`
-2. an existing gitignored directory among `.tmp/`, `scratch/`, `.scratch/`
-3. `.tmp/`, created only if git already ignores it
+2. `to-mr-comments/` inside an existing gitignored `tmp/`, `.tmp/`, `scratch/`, or `.scratch/`
+3. `.tmp/to-mr-comments/`, created only if git already ignores `.tmp/`
 4. `$TMPDIR/to-mr-comments/`
 
 Never written to a tracked path. The filename is stable per MR, so re-initialising resumes the existing plan instead of starting over. If HEAD moved, the state says so and posting refuses until `verify` is clean again.

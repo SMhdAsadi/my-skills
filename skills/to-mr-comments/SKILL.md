@@ -5,7 +5,7 @@ license: MIT
 compatibility: "git >= 2.0; glab >= 1.40 (only for posting)"
 metadata:
   author: SMhd
-  version: "2.0.0"
+  version: "2.1.0"
   tags: [git, gitlab, code-review, merge-requests, developer-tools]
 ---
 
@@ -47,7 +47,7 @@ python3 scripts/comments.py init --project team/api --iid 2340 \
   --base main --host gitlab.example.com --offline     # no network
 ```
 
-State lives in a gitignored scratch dir (`$MR_COMMENTS_DIR` → existing ignored dir → `.tmp/` → system temp), never a tracked path. `init` prints the absolute path; say it out loud when the fallback is used.
+State lives in a skill-owned subdirectory of a gitignored scratch dir: `$MR_COMMENTS_DIR`, else `to-mr-comments/` inside the first existing ignored `tmp/`, `.tmp/`, `scratch/`, or `.scratch/`, else system temp. Never a tracked path. `init` prints the absolute path; say it out loud when the fallback is used.
 
 ## 2. Harvest
 

@@ -51,13 +51,30 @@ class StateDirTests(unittest.TestCase):
         (self.root / ".gitignore").write_text("scratch/\n", encoding="utf-8")
         (self.root / "scratch").mkdir()
         directory, source = _common.resolve_state_dir(self.root)
-        self.assertEqual(directory, self.root / "scratch")
+        self.assertEqual(directory, self.root / "scratch" / "to-mr-comments")
         self.assertIn("scratch", source)
+
+    def test_tmp_has_highest_priority(self):
+        (self.root / ".gitignore").write_text(
+            "tmp/\n.tmp/\nscratch/\n.scratch/\n", encoding="utf-8"
+        )
+        for name in ("tmp", ".tmp", "scratch", ".scratch"):
+            (self.root / name).mkdir()
+        directory, source = _common.resolve_state_dir(self.root)
+        self.assertEqual(directory, self.root / "tmp" / "to-mr-comments")
+        self.assertEqual(source, "repo:tmp")
+
+    def test_unignored_tmp_is_skipped(self):
+        (self.root / ".gitignore").write_text(".tmp/\n", encoding="utf-8")
+        (self.root / "tmp").mkdir()
+        directory, _ = _common.resolve_state_dir(self.root)
+        self.assertEqual(directory, self.root / ".tmp" / "to-mr-comments")
+        self.assertNotEqual(directory.parent, self.root / "tmp")
 
     def test_creatable_tmp_is_used_only_when_ignored(self):
         (self.root / ".gitignore").write_text(".tmp/\n", encoding="utf-8")
         directory, _ = _common.resolve_state_dir(self.root)
-        self.assertEqual(directory, self.root / ".tmp")
+        self.assertEqual(directory, self.root / ".tmp" / "to-mr-comments")
         self.assertTrue(directory.is_dir())
 
     def test_unignored_tmp_is_not_used(self):

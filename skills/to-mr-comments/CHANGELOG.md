@@ -33,7 +33,7 @@ Each release is tagged `to-mr-comments-v<version>` and published on the [Release
 - **`references/comment-model.md`:** schema, anchor kinds, status lifecycle, validation rules, selection policy, privacy rules, and budget semantics.
 - **`references/gitlab-recipes.md`:** exact `glab api --input -` payloads for inline, file, and MR-level notes; draft-note lifecycle; dedupe; error table.
 - **`references/examples.md`:** four certified comments (`blocker`, `question`, `suggestion`, `test-gap`) and the old LTR comment as a rejected anti-example.
-- **Test suite:** 99 stdlib `unittest` cases plus golden fixtures for English, Persian, suggestions, and the empty state. No network or credentials required.
+- **Test suite:** 102 stdlib `unittest` cases plus golden fixtures for English, Persian, suggestions, and the empty state. No network or credentials required.
 
 ### Design notes
 

@@ -25,6 +25,7 @@ from _common import (
     ScriptError,
     add_event,
     ensure_item_defaults,
+    invalidate_approval,
     load_state,
     now_iso,
     repo_root,
@@ -273,14 +274,53 @@ def fetch_gitlab(repo: str, host: str, number: int | None) -> tuple[dict, list[d
     return target, threads, warnings
 
 
-def merge_existing(state: dict, fresh: dict) -> dict:
-    """Keep prior verdicts and statuses when the same MR is re-fetched."""
-    previous = {item["n"]: item for item in state.get("items", [])}
-    if not previous:
-        return fresh
+def reconcile_orphans(state: dict, fresh_threads: list[dict]) -> list[str]:
+    """Mark items whose threads vanished and clear approval that no longer applies.
 
+    The fresh thread list is authoritative, so a thread it does not contain can
+    no longer receive a reply. A posted or resolved item already happened and
+    keeps its status; every other item loses the approval that named the gone
+    thread and must be re-planned or dropped.
+    """
+    known = {thread["id"] for thread in fresh_threads}
+    warnings: list[str] = []
+    for item in state.get("items", []):
+        missing = [
+            thread_id
+            for thread_id in item.get("threadIds") or []
+            if thread_id not in known
+        ]
+        if not missing:
+            # The thread came back: the item is plannable again.
+            item["orphaned"] = False
+            item["missingThreadIds"] = []
+            continue
+
+        item["orphaned"] = True
+        item["missingThreadIds"] = missing
+        if item.get("status") not in ("posted", "resolved"):
+            invalidate_approval(item, "threads missing from the re-fetch")
+
+        joined = ", ".join(missing)
+        add_event(state, "orphaned", f"item #{item.get('n')}: missing {joined}")
+        warnings.append(
+            f"Item #{item.get('n')} references missing thread(s) {joined}; "
+            "re-plan or drop it before posting."
+        )
+    return warnings
+
+
+def merge_existing(state: dict, fresh: dict) -> dict:
+    """Keep prior items and history when the same MR is re-fetched.
+
+    The fresh fetch replaces ``threads`` (it is authoritative) and appends to the
+    event log. Triage work is not thrown away: items keep their verdicts,
+    statuses, approval metadata and post journal unless a thread they named is
+    gone, in which case they are orphaned and their approval is invalidated.
+    """
+    fresh["events"] = list(state.get("events") or []) + list(fresh.get("events") or [])
     fresh["items"] = sorted(
-        (ensure_item_defaults(item) for item in previous.values()),
+        (ensure_item_defaults(item) for item in state.get("items") or []),
         key=lambda item: item["n"],
     )
     add_event(fresh, "refetched", f"{len(fresh['threads'])} thread(s) after re-fetch")
@@ -293,6 +333,10 @@ def merge_existing(state: dict, fresh: dict) -> dict:
             f"HEAD moved since the last fetch ({old_head[:8]} -> {new_head[:8]}). "
             "Existing verdicts may be stale; re-verify before applying."
         ]
+
+    fresh["warnings"] = fresh.get("warnings", []) + reconcile_orphans(
+        fresh, fresh["threads"]
+    )
     return fresh
 
 
@@ -328,6 +372,7 @@ def main(argv: list[str] | None = None) -> int:
     target, threads, warnings = fetch_gitlab(repo, host, args.number)
 
     unresolved = [thread for thread in threads if not thread["resolved"]]
+    resolved = [thread for thread in threads if thread["resolved"]]
     kept = threads if args.include_resolved else unresolved
 
     fetched_at = now_iso()
@@ -371,7 +416,10 @@ def main(argv: list[str] | None = None) -> int:
     print(f"state   {path}")
     print(f"dir     {source}")
     print(f"target  gitlab:{repo}!{target['number']} @ {str(target.get('headSha'))[:8]}")
-    print(f"threads {len(kept)} unresolved" + (f" of {len(threads)}" if args.include_resolved else ""))
+    summary = f"threads {len(unresolved)} unresolved"
+    if args.include_resolved:
+        summary += f", {len(resolved)} resolved kept"
+    print(summary)
     print("anchors " + ", ".join(f"{k}={v}" for k, v in sorted(by_kind.items())))
     print("authors " + ", ".join(f"{k}={v}" for k, v in sorted(by_author.items())))
     for warning in state.get("warnings") or []:

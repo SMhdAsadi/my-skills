@@ -17,6 +17,7 @@ SKILL_ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = SKILL_ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
+import helpers  # noqa: E402
 import _common  # noqa: E402
 import fetch_threads as fetch  # noqa: E402
 import post_reply as reply  # noqa: E402
@@ -99,8 +100,14 @@ class AuthorTests(unittest.TestCase):
 
     def test_suffix_and_known(self):
         self.assertEqual(fetch.classify_author("dependabot[bot]"), "bot")
-        self.assertEqual(fetch.classify_author("copilot-pull-request-reviewer"), "bot")
+        self.assertEqual(fetch.classify_author("renovate"), "bot")
         self.assertEqual(fetch.classify_author("alice"), "human")
+
+    def test_github_specific_logins_are_not_known_bots(self):
+        self.assertNotIn("github-actions", fetch.KNOWN_BOTS)
+        self.assertNotIn("copilot-pull-request-reviewer", fetch.KNOWN_BOTS)
+        self.assertEqual(fetch.classify_author("github-actions"), "human")
+        self.assertEqual(fetch.classify_author("copilot-pull-request-reviewer"), "human")
 
     def test_unknown(self):
         self.assertEqual(fetch.classify_author(None), "unknown")
@@ -267,6 +274,63 @@ class EvidenceParseTests(unittest.TestCase):
     def test_missing_line_raises(self):
         with self.assertRaises(_common.ScriptError):
             state_cmd.parse_evidence(["src/app.ts"])
+
+
+class SharedHelperTests(unittest.TestCase):
+    def test_gitlab_endpoint_builder_encodes_the_project_and_names_the_mr(self):
+        self.assertEqual(
+            _common.gitlab_project_base("team/api"),
+            "projects/team%2Fapi",
+        )
+        self.assertEqual(
+            _common.gitlab_mr_endpoint("team/api", 2340),
+            "projects/team%2Fapi/merge_requests/2340",
+        )
+
+    def test_thread_anchor_label_is_shared_and_does_not_backtick(self):
+        inline = helpers.make_thread(
+            "gl:a",
+            anchor={
+                "kind": "inline",
+                "path": "src/app.ts",
+                "oldPath": None,
+                "line": 4,
+                "endLine": None,
+                "side": "old",
+            },
+        )
+        file_thread = helpers.make_thread(
+            "gl:b",
+            anchor={
+                "kind": "file",
+                "path": "src/app.ts",
+                "oldPath": None,
+                "line": None,
+                "endLine": None,
+                "side": None,
+            },
+        )
+        mr_thread = helpers.make_thread(
+            "gl:c",
+            anchor={
+                "kind": "mr",
+                "path": None,
+                "oldPath": None,
+                "line": None,
+                "endLine": None,
+                "side": None,
+            },
+        )
+        self.assertEqual(_common.anchor_label(inline), "src/app.ts:4 (old)")
+        self.assertEqual(_common.anchor_label(file_thread), "src/app.ts")
+        self.assertEqual(_common.anchor_label(mr_thread), "MR-level")
+
+        item = helpers.make_item(1, threadIds=["gl:a", "gl:b", "gl:c"])
+        threads = {"gl:a": inline, "gl:b": file_thread, "gl:c": mr_thread}
+        self.assertEqual(
+            state_cmd.anchor_label(item, threads),
+            "`src/app.ts:4 (old)`, `src/app.ts`, MR-level",
+        )
 
 
 class StateDirTests(unittest.TestCase):

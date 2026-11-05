@@ -37,13 +37,14 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from urllib.parse import quote
 
 from _common import (
     CODE_VERDICTS,
     ScriptError,
     add_event,
+    anchor_label,
     find_item,
+    gitlab_mr_endpoint,
     load_state,
     now_iso,
     refresh_item_status,
@@ -56,18 +57,6 @@ POSTABLE_STATUSES = {"approved", "applied", "verified"}
 # A code item in one of these states cannot authorise a reply batch and is not
 # eligible on its own; the fast path must stand down until Gate 1 runs.
 UNFINISHED_CODE_STATUSES = {"proposed"}
-
-
-def anchor_label(thread: dict) -> str:
-    """Where the thread is anchored, in the same shape as triage_state."""
-    anchor = thread.get("anchor") or {}
-    kind = anchor.get("kind")
-    if kind == "inline" and anchor.get("path"):
-        side = anchor.get("side")
-        return f"{anchor['path']}:{anchor.get('line')}" + (f" ({side})" if side else "")
-    if kind == "file" and anchor.get("path"):
-        return anchor["path"]
-    return "MR-level"
 
 
 def read_body(item: dict, *, body: str | None = None, body_file: str | None = None):
@@ -207,8 +196,57 @@ def unfinished_code_items(items: list[dict]) -> list[dict]:
 
 
 def gitlab_endpoint(state: dict, discussion_id: str) -> str:
-    encoded = quote(state["repo"], safe="")
-    return f"projects/{encoded}/merge_requests/{state['target']['number']}/discussions/{discussion_id}"
+    mr = gitlab_mr_endpoint(state["repo"], state["target"]["number"])
+    return f"{mr}/discussions/{discussion_id}"
+
+
+def assert_unique_thread_owners(items: list[dict], entries: list[dict]) -> None:
+    """Refuse a batch where two items claim one thread or its post record.
+
+    This is a state-integrity check, not a network one: it runs before any
+    preview or post so a corrupted plan can never double-post. ``--item`` and
+    ``--all-approved`` share it.
+    """
+    named: dict[str, list[int]] = {}
+    for item in items:
+        for thread_id in dict.fromkeys(item.get("threadIds") or []):
+            named.setdefault(thread_id, []).append(item.get("n"))
+
+    posted: dict[str, list[int]] = {}
+    for item in items:
+        for post in item.get("posts") or []:
+            thread_id = post.get("threadId")
+            if thread_id and post.get("postedAt"):
+                posted.setdefault(thread_id, []).append(item.get("n"))
+
+    problems: list[str] = []
+    for entry in entries:
+        thread_id = entry["thread"]["id"]
+        number = entry["item"]["n"]
+        others = [owner for owner in named.get(thread_id, []) if owner != number]
+        if others:
+            owners = ", ".join("#" + str(owner) for owner in others)
+            problems.append(
+                f"{thread_id} is selected by item #{number} but also named by item {owners}"
+            )
+            continue
+        foreign_posts = [
+            owner for owner in posted.get(thread_id, []) if owner != number
+        ]
+        if foreign_posts:
+            owners = ", ".join("#" + str(owner) for owner in foreign_posts)
+            problems.append(
+                f"{thread_id} is selected by item #{number} but already has a post "
+                f"record owned by item {owners}"
+            )
+
+    if problems:
+        listing = "; ".join(dict.fromkeys(problems))
+        raise ScriptError(
+            f"Thread ownership conflict, so nothing was posted: {listing}. "
+            "One thread can only be triaged and posted by one item; fix the plan "
+            "with triage_state.py before retrying."
+        )
 
 
 def gitlab_reply(host: str, state: dict, discussion_id: str, body: str) -> dict:
@@ -536,6 +574,8 @@ def main(argv: list[str] | None = None) -> int:
         selected, entries = batch_entries(state, args)
     else:
         selected, entries = single_item_entries(state, args)
+
+    assert_unique_thread_owners(state.get("items") or [], entries)
 
     overrides: list[dict] = []
     if args.resolve:

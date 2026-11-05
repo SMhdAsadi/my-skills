@@ -18,13 +18,13 @@ import json
 import re
 import sys
 from pathlib import Path
-from urllib.parse import quote
 
 from _common import (
     SCHEMA_VERSION,
     ScriptError,
     add_event,
     ensure_item_defaults,
+    gitlab_mr_endpoint,
     invalidate_approval,
     load_state,
     now_iso,
@@ -36,9 +36,9 @@ from _common import (
 )
 
 BOT_SUFFIXES = ("[bot]", "-bot", "_bot")
+# Forge-neutral automation accounts. GitHub-only logins are deliberately absent:
+# this skill talks to GitLab, and a project may legitimately use those names.
 KNOWN_BOTS = {
-    "copilot-pull-request-reviewer",
-    "github-actions",
     "dependabot",
     "renovate",
     "codecov",
@@ -236,8 +236,7 @@ def fetch_gitlab(repo: str, host: str, number: int | None) -> tuple[dict, list[d
         except (json.JSONDecodeError, KeyError) as exc:
             raise ScriptError(f"Could not read the MR number from glab: {payload[:200]}") from exc
 
-    encoded = quote(repo, safe="")
-    base = f"projects/{encoded}/merge_requests/{number}"
+    base = gitlab_mr_endpoint(repo, number)
     mr = gitlab_api(host, base)
     if not isinstance(mr, dict):
         raise ScriptError(f"Unexpected GitLab response for {repo}!{number}")

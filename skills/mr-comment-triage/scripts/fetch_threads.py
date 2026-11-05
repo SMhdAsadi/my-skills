@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Collect unresolved review threads from GitHub or GitLab.
+"""Collect unresolved review threads from a GitLab merge request.
 
-Both providers are normalized into a single thread model so every later phase
-is provider-agnostic. This command only reads from the forge; its sole write is
-the triage state file in a gitignored scratch directory.
+Threads are normalized into one model so every later phase stays independent of
+the forge API. This command only reads from GitLab; its sole write is the triage
+state file in a gitignored scratch directory.
 
 Usage:
     python3 fetch_threads.py                       # current branch, auto-detect
-    python3 fetch_threads.py --number 14783 --repo cli/cli
-    python3 fetch_threads.py --provider gitlab --host code.example.com --repo team/api --number 2340
+    python3 fetch_threads.py --number 2340 --repo group/project
+    python3 fetch_threads.py --host code.example.com --repo team/api --number 2340
 """
 
 from __future__ import annotations
@@ -31,45 +31,6 @@ from _common import (
     save_state,
     state_path,
 )
-
-GITHUB_QUERY = """
-query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
-  repository(owner: $owner, name: $repo) {
-    pullRequest(number: $number) {
-      number
-      title
-      url
-      headRefOid
-      baseRefOid
-      reviewThreads(first: 100, after: $cursor) {
-        totalCount
-        pageInfo { hasNextPage endCursor }
-        nodes {
-          id
-          isResolved
-          isOutdated
-          path
-          line
-          startLine
-          originalLine
-          diffSide
-          comments(first: 50) {
-            nodes {
-              id
-              author { login __typename }
-              body
-              createdAt
-              path
-              line
-              originalLine
-            }
-          }
-        }
-      }
-    }
-  }
-}
-""".strip()
 
 BOT_SUFFIXES = ("[bot]", "-bot", "_bot")
 KNOWN_BOTS = {
@@ -103,17 +64,11 @@ def parse_remote(url: str) -> tuple[str, str] | None:
     return None
 
 
-def detect_provider(host: str) -> str:
-    return "github" if "github" in host.lower() else "gitlab"
-
-
-def classify_author(login: str | None, typename: str | None = None, self_login: str | None = None) -> str:
+def classify_author(login: str | None, self_login: str | None = None) -> str:
     if not login:
         return "unknown"
     if self_login and login == self_login:
         return "self"
-    if typename == "Bot":
-        return "bot"
     lowered = login.lower()
     if lowered.endswith(BOT_SUFFIXES) or lowered in KNOWN_BOTS:
         return "bot"
@@ -126,52 +81,6 @@ def _anchor(path: str | None, line: int | None, end_line: int | None, side: str)
     if not line:
         return {"kind": "file", "path": path, "line": None, "endLine": None, "side": None}
     return {"kind": "inline", "path": path, "line": line, "endLine": end_line, "side": side}
-
-
-def normalize_github_thread(node: dict, self_login: str | None = None) -> dict | None:
-    comments = (node.get("comments") or {}).get("nodes") or []
-    if not comments:
-        return None
-    first = comments[0]
-    author = first.get("author") or {}
-    login = author.get("login")
-
-    path = node.get("path") or first.get("path")
-    line = (
-        node.get("line")
-        or first.get("line")
-        or node.get("originalLine")
-        or first.get("originalLine")
-    )
-    start_line = node.get("startLine")
-    end_line = max(start_line, line) if (start_line and line) else None
-    side = "old" if (node.get("diffSide") or "").upper() == "LEFT" else "new"
-
-    return {
-        "id": f"gh:{node['id']}",
-        "remoteId": node["id"],
-        "anchor": _anchor(path, line, end_line, side),
-        "author": login,
-        "authorKind": classify_author(login, author.get("__typename"), self_login),
-        "body": first.get("body") or "",
-        "createdAt": first.get("createdAt"),
-        "resolvable": True,
-        "resolved": bool(node.get("isResolved")),
-        "stale": bool(node.get("isOutdated")),
-        "replies": [
-            {
-                "author": (reply.get("author") or {}).get("login"),
-                "authorKind": classify_author(
-                    (reply.get("author") or {}).get("login"),
-                    (reply.get("author") or {}).get("__typename"),
-                    self_login,
-                ),
-                "body": reply.get("body") or "",
-                "createdAt": reply.get("createdAt"),
-            }
-            for reply in comments[1:]
-        ],
-    }
 
 
 def normalize_gitlab_discussion(
@@ -215,7 +124,7 @@ def normalize_gitlab_discussion(
         "remoteId": discussion["id"],
         "anchor": _anchor(path, line, end_line, side),
         "author": login,
-        "authorKind": classify_author(login, None, self_login),
+        "authorKind": classify_author(login, self_login),
         "body": root.get("body") or "",
         "createdAt": root.get("created_at"),
         "resolvable": True,
@@ -225,7 +134,7 @@ def normalize_gitlab_discussion(
             {
                 "author": (note.get("author") or {}).get("username"),
                 "authorKind": classify_author(
-                    (note.get("author") or {}).get("username"), None, self_login
+                    (note.get("author") or {}).get("username"), self_login
                 ),
                 "body": note.get("body") or "",
                 "createdAt": note.get("created_at"),
@@ -241,77 +150,6 @@ def git_remote(root: Path | None) -> tuple[str, str] | None:
     if proc.returncode != 0:
         return None
     return parse_remote(proc.stdout)
-
-
-def github_api(args: list[str], host: str) -> dict:
-    env = {"GH_HOST": host} if host != "github.com" else None
-    proc = run(["gh", *args], env=env)
-    try:
-        return json.loads(proc.stdout)
-    except json.JSONDecodeError as exc:
-        raise ScriptError(f"Unexpected non-JSON output from gh: {proc.stdout[:200]}") from exc
-
-
-def fetch_github(repo: str, host: str, number: int | None) -> tuple[dict, list[dict], list[str]]:
-    spec = repo if host == "github.com" else f"{host}/{repo}"
-    warnings: list[str] = []
-
-    if number is None:
-        payload = github_api(["pr", "view", "-R", spec, "--json", "number"], host)
-        number = payload["number"]
-
-    owner, _, name = repo.rpartition("/")
-    if not owner:
-        raise ScriptError(f"GitHub repo must be OWNER/REPO, got {repo!r}")
-
-    proc = run(["gh", "api", "user", "--jq", ".login"], env={"GH_HOST": host} if host != "github.com" else None, check=False)
-    self_login = proc.stdout.strip() or None
-
-    threads: list[dict] = []
-    cursor: str | None = None
-    target: dict = {}
-    total = 0
-    for _ in range(20):
-        cmd = [
-            "api", "graphql",
-            "-F", f"owner={owner}",
-            "-F", f"repo={name}",
-            "-F", f"number={number}",
-            "-f", f"query={GITHUB_QUERY}",
-        ]
-        if cursor:
-            cmd.extend(["-F", f"cursor={cursor}"])
-        payload = github_api(cmd, host)
-
-        if payload.get("errors"):
-            raise ScriptError("GitHub GraphQL error: " + json.dumps(payload["errors"])[:400])
-
-        pr = payload["data"]["repository"]["pullRequest"]
-        if not target:
-            target = {
-                "kind": "pr",
-                "number": pr["number"],
-                "title": pr.get("title"),
-                "url": pr.get("url"),
-                "headSha": pr.get("headRefOid"),
-                "baseSha": pr.get("baseRefOid"),
-            }
-        connection = pr["reviewThreads"]
-        total = connection.get("totalCount", total)
-        for node in connection.get("nodes") or []:
-            normalized = normalize_github_thread(node, self_login)
-            if normalized:
-                threads.append(normalized)
-        page = connection.get("pageInfo") or {}
-        if not page.get("hasNextPage"):
-            break
-        cursor = page.get("endCursor")
-    else:
-        warnings.append("Stopped after 20 pages; some threads may be missing.")
-
-    if total > len(threads):
-        warnings.append(f"Fetched {len(threads)} of {total} threads reported by GitHub.")
-    return target, threads, warnings
 
 
 def gitlab_api(host: str, endpoint: str, *, check: bool = True) -> object:
@@ -395,12 +233,11 @@ def merge_existing(state: dict, fresh: dict) -> dict:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Collect unresolved PR/MR review threads into the triage state file."
+        description="Collect unresolved GitLab MR review threads into the triage state file."
     )
-    parser.add_argument("--provider", choices=("auto", "github", "gitlab"), default="auto")
-    parser.add_argument("--repo", help="GitHub OWNER/REPO or GitLab GROUP/PROJECT")
-    parser.add_argument("--host", help="Forge host; inferred from the git remote by default")
-    parser.add_argument("--number", type=int, help="PR/MR number; inferred from the current branch")
+    parser.add_argument("--repo", help="GitLab GROUP/PROJECT")
+    parser.add_argument("--host", help="GitLab host; inferred from the git remote by default")
+    parser.add_argument("--number", type=int, help="MR number; inferred from the current branch")
     parser.add_argument(
         "--include-resolved",
         action="store_true",
@@ -416,18 +253,14 @@ def main(argv: list[str] | None = None) -> int:
 
     root = repo_root()
     remote = git_remote(root)
-    host = args.host or (remote[0] if remote else "github.com")
-    provider = args.provider if args.provider != "auto" else detect_provider(host)
+    host = args.host or (remote[0] if remote else "gitlab.com")
     repo = args.repo or (remote[1] if remote else None)
     if not repo:
         raise ScriptError(
             "Could not determine the repository from the git remote. Pass --repo."
         )
 
-    if provider == "github":
-        target, threads, warnings = fetch_github(repo, host, args.number)
-    else:
-        target, threads, warnings = fetch_gitlab(repo, host, args.number)
+    target, threads, warnings = fetch_gitlab(repo, host, args.number)
 
     unresolved = [thread for thread in threads if not thread["resolved"]]
     kept = threads if args.include_resolved else unresolved
@@ -435,7 +268,7 @@ def main(argv: list[str] | None = None) -> int:
     fetched_at = now_iso()
     state = {
         "schemaVersion": SCHEMA_VERSION,
-        "provider": provider,
+        "provider": "gitlab",
         "host": host,
         "repo": repo,
         "target": target,
@@ -453,7 +286,7 @@ def main(argv: list[str] | None = None) -> int:
     }
 
     directory, source = resolve_state_dir(root)
-    path = state_path(directory, provider, repo, target["number"])
+    path = state_path(directory, "gitlab", repo, target["number"])
 
     if path.exists() and not args.reset:
         state = merge_existing(json.loads(path.read_text(encoding="utf-8")), state)
@@ -473,7 +306,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"state   {path}")
     print(f"dir     {source}")
-    print(f"target  {provider}:{repo}!{target['number']} @ {str(target.get('headSha'))[:8]}")
+    print(f"target  gitlab:{repo}!{target['number']} @ {str(target.get('headSha'))[:8]}")
     print(f"threads {len(kept)} unresolved" + (f" of {len(threads)}" if args.include_resolved else ""))
     print("anchors " + ", ".join(f"{k}={v}" for k, v in sorted(by_kind.items())))
     print("authors " + ", ".join(f"{k}={v}" for k, v in sorted(by_author.items())))

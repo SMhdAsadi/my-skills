@@ -30,24 +30,6 @@ from _common import (
     save_state,
 )
 
-REPLY_MUTATION = """
-mutation($threadId: ID!, $body: String!) {
-  addPullRequestReviewThreadReply(
-    input: {pullRequestReviewThreadId: $threadId, body: $body}
-  ) {
-    comment { id url }
-  }
-}
-""".strip()
-
-RESOLVE_MUTATION = """
-mutation($threadId: ID!) {
-  resolveReviewThread(input: {threadId: $threadId}) {
-    thread { id isResolved }
-  }
-}
-""".strip()
-
 POSTABLE_STATUSES = {"approved", "applied", "verified"}
 
 
@@ -96,34 +78,6 @@ def target_threads(state: dict, item: dict, explicit: str | None) -> list[dict]:
     if missing:
         raise ScriptError(f"Unknown thread id(s): {', '.join(missing)}")
     return [index[thread_id] for thread_id in wanted]
-
-
-def github_reply(host: str, thread_id: str, body: str) -> dict:
-    env = {"GH_HOST": host} if host != "github.com" else None
-    proc = run(
-        [
-            "gh", "api", "graphql",
-            "-f", f"query={REPLY_MUTATION}",
-            "-f", f"threadId={thread_id}",
-            "-f", f"body={body}",
-        ],
-        env=env,
-    )
-    payload = json.loads(proc.stdout)
-    if payload.get("errors"):
-        raise ScriptError("GitHub rejected the reply: " + json.dumps(payload["errors"])[:400])
-    return (payload.get("data") or {}).get("addPullRequestReviewThreadReply", {}).get("comment", {})
-
-
-def github_resolve(host: str, thread_id: str) -> None:
-    env = {"GH_HOST": host} if host != "github.com" else None
-    proc = run(
-        ["gh", "api", "graphql", "-f", f"query={RESOLVE_MUTATION}", "-f", f"threadId={thread_id}"],
-        env=env,
-    )
-    payload = json.loads(proc.stdout)
-    if payload.get("errors"):
-        raise ScriptError("GitHub rejected the resolve: " + json.dumps(payload["errors"])[:400])
 
 
 def gitlab_endpoint(state: dict, discussion_id: str) -> str:
@@ -187,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     threads = target_threads(state, item, args.thread)
-    provider = state["provider"]
+    provider = state.get("provider", "gitlab")
     host = state["host"]
 
     print(f"{'post' if args.post else 'dry-run'}  {provider}:{state['repo']}!{state['target']['number']}")
@@ -205,14 +159,9 @@ def main(argv: list[str] | None = None) -> int:
 
     posted = []
     for thread in threads:
-        if provider == "github":
-            result = github_reply(host, thread["remoteId"], body)
-            if args.resolve:
-                github_resolve(host, thread["remoteId"])
-        else:
-            result = gitlab_reply(host, state, thread["remoteId"], body)
-            if args.resolve:
-                gitlab_resolve(host, state, thread["remoteId"])
+        result = gitlab_reply(host, state, thread["remoteId"], body)
+        if args.resolve:
+            gitlab_resolve(host, state, thread["remoteId"])
         posted.append(
             {
                 "threadId": thread["id"],

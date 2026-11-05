@@ -3,30 +3,35 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
+import re
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
+SKILL_ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS = SKILL_ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 import _common  # noqa: E402
 import fetch_threads as fetch  # noqa: E402
+import post_reply as reply  # noqa: E402
 import triage_state as state_cmd  # noqa: E402
 
 
 class ParseRemoteTests(unittest.TestCase):
     def test_scp_style(self):
         self.assertEqual(
-            fetch.parse_remote("git@github.com:cli/cli.git"), ("github.com", "cli/cli")
+            fetch.parse_remote("git@gitlab.com:group/api.git"), ("gitlab.com", "group/api")
         )
 
     def test_https_with_git_suffix(self):
         self.assertEqual(
-            fetch.parse_remote("https://github.com/cli/cli.git"), ("github.com", "cli/cli")
+            fetch.parse_remote("https://gitlab.com/group/api.git"), ("gitlab.com", "group/api")
         )
 
     def test_self_hosted_with_port(self):
@@ -45,20 +50,52 @@ class ParseRemoteTests(unittest.TestCase):
         self.assertIsNone(fetch.parse_remote("/local/path/repo"))
 
 
-class ProviderTests(unittest.TestCase):
-    def test_detect(self):
-        self.assertEqual(fetch.detect_provider("github.com"), "github")
-        self.assertEqual(fetch.detect_provider("code.ts.co.ir"), "gitlab")
+class GitLabOnlyTests(unittest.TestCase):
+    """The Skill ships a single GitLab transport and no provider switch."""
+
+    def test_collector_has_no_provider_flag(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                fetch.build_parser().parse_args(["--provider", "gitlab"])
+
+    def test_collector_has_no_github_symbols(self):
+        for name in (
+            "GITHUB_QUERY",
+            "detect_provider",
+            "github_api",
+            "fetch_github",
+            "normalize_github_thread",
+        ):
+            self.assertFalse(hasattr(fetch, name), name)
+
+    def test_reply_transport_has_no_github_symbols(self):
+        for name in ("REPLY_MUTATION", "RESOLVE_MUTATION", "github_reply", "github_resolve"):
+            self.assertFalse(hasattr(reply, name), name)
+
+    def test_documents_never_claim_github(self):
+        docs = [
+            SKILL_ROOT / "SKILL.md",
+            SKILL_ROOT / "README.md",
+            *sorted((SKILL_ROOT / "references").glob("*.md")),
+        ]
+        banned = (
+            re.compile(r"\bgh\b"),
+            re.compile(r"github", re.IGNORECASE),
+            re.compile(r"graphql", re.IGNORECASE),
+            re.compile(r"gh_host", re.IGNORECASE),
+            re.compile(r"--provider"),
+        )
+        for path in docs:
+            text = path.read_text(encoding="utf-8")
+            for pattern in banned:
+                self.assertIsNone(
+                    pattern.search(text), f"{path.name} still matches {pattern.pattern!r}"
+                )
 
 
 class AuthorTests(unittest.TestCase):
     def test_self_wins(self):
-        self.assertEqual(fetch.classify_author("me", "User", "me"), "self")
-
-    def test_graphql_bot_typename(self):
-        self.assertEqual(
-            fetch.classify_author("someone", "Bot", "me"), "bot"
-        )
+        self.assertEqual(fetch.classify_author("me", "me"), "self")
 
     def test_suffix_and_known(self):
         self.assertEqual(fetch.classify_author("dependabot[bot]"), "bot")
@@ -67,83 +104,6 @@ class AuthorTests(unittest.TestCase):
 
     def test_unknown(self):
         self.assertEqual(fetch.classify_author(None), "unknown")
-
-
-def github_node(**overrides):
-    node = {
-        "id": "PRRT_1",
-        "isResolved": False,
-        "isOutdated": False,
-        "path": "src/app.ts",
-        "line": 42,
-        "startLine": None,
-        "originalLine": 42,
-        "diffSide": "RIGHT",
-        "comments": {
-            "nodes": [
-                {
-                    "id": "PRRC_1",
-                    "author": {"login": "alice", "__typename": "User"},
-                    "body": "This can throw",
-                    "createdAt": "2026-10-01T10:00:00Z",
-                    "path": "src/app.ts",
-                    "line": 42,
-                    "originalLine": 42,
-                }
-            ]
-        },
-    }
-    node.update(overrides)
-    return node
-
-
-class GithubNormalizeTests(unittest.TestCase):
-    def test_inline_anchor(self):
-        thread = fetch.normalize_github_thread(github_node(), "me")
-        self.assertEqual(thread["id"], "gh:PRRT_1")
-        self.assertEqual(thread["anchor"]["kind"], "inline")
-        self.assertEqual(thread["anchor"]["line"], 42)
-        self.assertEqual(thread["anchor"]["side"], "new")
-        self.assertEqual(thread["authorKind"], "human")
-
-    def test_outdated_comment_falls_back_to_original_line(self):
-        node = github_node(line=None, originalLine=37, isOutdated=True)
-        node["comments"]["nodes"][0]["line"] = None
-        thread = fetch.normalize_github_thread(node, "me")
-        self.assertEqual(thread["anchor"]["line"], 37)
-        self.assertTrue(thread["stale"])
-
-    def test_file_level_comment(self):
-        node = github_node(line=None, originalLine=None)
-        node["comments"]["nodes"][0]["line"] = None
-        node["comments"]["nodes"][0]["originalLine"] = None
-        thread = fetch.normalize_github_thread(node, "me")
-        self.assertEqual(thread["anchor"]["kind"], "file")
-
-    def test_mr_level_comment(self):
-        node = github_node(path=None, line=None, originalLine=None)
-        node["comments"]["nodes"][0]["path"] = None
-        node["comments"]["nodes"][0]["line"] = None
-        node["comments"]["nodes"][0]["originalLine"] = None
-        thread = fetch.normalize_github_thread(node, "me")
-        self.assertEqual(thread["anchor"]["kind"], "mr")
-
-    def test_replies_are_split_from_root(self):
-        node = github_node()
-        node["comments"]["nodes"].append(
-            {
-                "id": "PRRC_2",
-                "author": {"login": "bob", "__typename": "User"},
-                "body": "Agreed",
-                "createdAt": "2026-10-02T10:00:00Z",
-                "path": "src/app.ts",
-                "line": 42,
-                "originalLine": 42,
-            }
-        )
-        thread = fetch.normalize_github_thread(node, "me")
-        self.assertEqual(len(thread["replies"]), 1)
-        self.assertEqual(thread["replies"][0]["author"], "bob")
 
 
 def gitlab_discussion(**overrides):
@@ -367,7 +327,7 @@ class StateDirTests(unittest.TestCase):
 
     def test_state_file_is_invisible_to_git(self):
         directory, _ = _common.resolve_state_dir(self.root)
-        path = _common.state_path(directory, "github", "cli/cli", 14783)
+        path = _common.state_path(directory, "gitlab", "group/api", 2340)
         _common.save_state(path, {"schemaVersion": 1, "items": []})
         untracked = subprocess.run(
             ["git", "ls-files", "--others", "--exclude-standard"],

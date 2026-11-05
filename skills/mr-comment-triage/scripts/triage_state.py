@@ -12,6 +12,7 @@ Subcommands:
     approve   Parse an approval expression and mark items approved/skipped
     show      Print the current plan
     render    Print the plan as a Markdown table
+    preflight Refuse a dirty working tree before the execute phase
 """
 
 from __future__ import annotations
@@ -43,11 +44,15 @@ from _common import (
     repo_root,
     resolve_state_dir,
     resolve_state_file,
+    run,
     save_state,
     verify_evidence,
 )
 
 SEVERITY_ORDER = {"blocking": 0, "correctness": 1, "maintainability": 2, "nit": 3}
+# A dirty-tree refusal names a bounded list; a generated dump can be huge, and
+# the agent only needs enough paths to recognise the work in the way.
+PREFLIGHT_PATH_LIMIT = 20
 # Statuses a direct `set --status` may write. Everything else has an owner.
 SETTABLE_STATUSES = ("proposed", "applied", "verified", "skipped")
 
@@ -659,6 +664,63 @@ def cmd_render(args: argparse.Namespace) -> int:
     return 0
 
 
+def status_target(line: str) -> str:
+    """The path a ``git status --porcelain`` line is about.
+
+    ``XY PATH`` and ``XY ORIG -> PATH`` both name ``PATH``; quotes only appear
+    for unusual filenames and are stripped for display.
+    """
+    target = line[3:] if len(line) > 3 else line.strip()
+    if " -> " in target:
+        target = target.split(" -> ", 1)[1]
+    return target.strip().strip('"')
+
+
+def cmd_preflight(args: argparse.Namespace) -> int:
+    """Refuse a dirty tree before the execute phase; record a clean one.
+
+    The approved fixes must land on a tree that holds nothing else, so this is
+    the last guard before editing. A clean result is journaled in the event
+    log; a dirty result applies nothing and names the paths in the way.
+    """
+    path = resolve_state_file(args.state)
+    state = load_state(path)
+
+    root = repo_root()
+    if root is None:
+        raise ScriptError(
+            "preflight needs a git repository. Run it from inside the checkout "
+            "that holds the approved fixes."
+        )
+
+    proc = run(["git", "status", "--porcelain"], cwd=root, check=False)
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip()
+        raise ScriptError(
+            "`git status --porcelain` failed during preflight"
+            + (f": {detail}" if detail else ".")
+        )
+
+    entries = [line for line in proc.stdout.splitlines() if line.strip()]
+    if entries:
+        paths = [status_target(line) for line in entries]
+        shown = paths[:PREFLIGHT_PATH_LIMIT]
+        listing = "\n".join(f"  {entry}" for entry in shown)
+        hidden = len(paths) - len(shown)
+        if hidden:
+            listing += f"\n  ... and {hidden} more"
+        raise ScriptError(
+            "Working tree is not clean, so the execute phase did not start. "
+            f"Commit or stash these changes first:\n{listing}"
+        )
+
+    add_event(state, "preflight-clean", "git status --porcelain clean")
+    save_state(path, state)
+    print(f"preflight clean: no local changes in {root}")
+    print(f"recorded preflight-clean in {path}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Inspect and update mr-comment-triage state.")
     parser.add_argument("--state", help="Explicit path to the state JSON")
@@ -698,6 +760,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("show", help="Print the current plan")
     subparsers.add_parser("render", help="Print the plan as a Markdown table")
+    subparsers.add_parser("preflight", help="Refuse a dirty working tree before execution")
 
     for sub in subparsers.choices.values():
         sub.add_argument("--state", help=argparse.SUPPRESS, default=argparse.SUPPRESS)
@@ -717,6 +780,7 @@ def main(argv: list[str] | None = None) -> int:
         "approve": cmd_approve,
         "show": cmd_show,
         "render": cmd_render,
+        "preflight": cmd_preflight,
     }
     return handlers[args.command](args)
 

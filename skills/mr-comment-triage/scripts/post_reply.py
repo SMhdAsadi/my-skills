@@ -20,10 +20,15 @@ Usage:
     python3 post_reply.py --all-approved                  # preview every reply
     python3 post_reply.py --all-approved --post           # send the batch
     python3 post_reply.py --all-approved --resolve --post # reply and resolve
+    python3 post_reply.py --all-approved --resolve --resolve-other --post
     python3 post_reply.py --item 3                        # preview one item
     python3 post_reply.py --item 3 --post                 # send one item
     python3 post_reply.py --item 3 --body "Thanks" --post # explicit override
     python3 post_reply.py --item 3 --thread gl:abc --post # one thread only
+
+`--resolve` closes only threads you authored (`authorKind: self`). Closing
+someone else's review thread requires `--resolve-other`, which is refused
+without `--resolve` and records a `resolve-override` event per thread.
 """
 
 from __future__ import annotations
@@ -126,6 +131,59 @@ def find_post(item: dict, thread_id: str) -> dict | None:
     return None
 
 
+def resolve_targets(entries: list[dict]) -> list[dict]:
+    """Threads a `--resolve` run would actually close.
+
+    A thread that already carries ``resolvedAt`` is skipped by the journal, so
+    it must not block a resume either.
+    """
+    targets = []
+    for entry in entries:
+        record = find_post(entry["item"], entry["thread"]["id"])
+        if not (record or {}).get("resolvedAt"):
+            targets.append(entry["thread"])
+    return targets
+
+
+def check_resolve_guard(entries: list[dict], *, allow_other: bool) -> list[dict]:
+    """Refuse to close anyone else's thread without `--resolve-other`.
+
+    Returns the non-self threads the caller is allowed to resolve under an
+    explicit override, so they can be audited as they are closed.
+    """
+    others = [
+        thread
+        for thread in resolve_targets(entries)
+        if thread.get("authorKind") != "self"
+    ]
+    if not others or allow_other:
+        return others
+    listing = ", ".join(
+        f"{thread['id']} (@{thread.get('author')})" for thread in others
+    )
+    raise ScriptError(
+        "--resolve closes only threads you authored (authorKind 'self'); these "
+        f"belong to someone else: {listing}. Re-run without --resolve to leave "
+        "them open, or pass --resolve-other to close them deliberately; that "
+        "override is recorded in the state file."
+    )
+
+
+def audit_resolve_override(
+    state: dict, item: dict, thread: dict, overrides: set[str]
+) -> None:
+    """Journal the deliberate exception next to the resolution it authorised."""
+    if thread["id"] not in overrides:
+        return
+    add_event(
+        state,
+        "resolve-override",
+        f"item #{item['n']} thread {thread['id']} by "
+        f"@{thread.get('author')} ({thread.get('authorKind')}) resolved "
+        "with --resolve-other",
+    )
+
+
 def is_eligible(item: dict) -> bool:
     """Gate 2 eligibility, including the reply-only fast path."""
     status = item.get("status")
@@ -189,7 +247,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--body-file", help="File with the reply text; use - for stdin (overrides the draft)")
     parser.add_argument("--body", help="Inline reply text (overrides the stored reply draft)")
     parser.add_argument("--post", action="store_true", help="Actually send the replies")
-    parser.add_argument("--resolve", action="store_true", help="Resolve the threads after replying")
+    parser.add_argument(
+        "--resolve",
+        action="store_true",
+        help="Resolve the threads you authored (authorKind 'self') after replying",
+    )
+    parser.add_argument(
+        "--resolve-other",
+        action="store_true",
+        help="Also resolve threads authored by others; requires --resolve and is audited",
+    )
     return parser
 
 
@@ -276,6 +343,7 @@ def print_preview(
     *,
     args: argparse.Namespace,
     batch: bool,
+    overrides: list[dict] | None = None,
 ) -> None:
     print(f"{'post' if args.post else 'dry-run'}  gitlab:{state['repo']}!{state['target']['number']}")
     if batch:
@@ -309,6 +377,11 @@ def print_preview(
             print(entry["body"])
             print("-" * 60)
     print(f"resolve  {'yes' if args.resolve else 'no'}")
+    for thread in overrides or []:
+        print(
+            f"override {thread['id']}  @{thread.get('author')}  "
+            f"({thread.get('authorKind')})  resolved with --resolve-other"
+        )
 
 
 def report_batch_failure(
@@ -350,9 +423,11 @@ def post_entries(
     entries: list[dict],
     *,
     resolve: bool,
+    overrides: set[str] | None = None,
 ) -> int:
     """Post the flat batch; journal each thread before the next call."""
     host = state["host"]
+    audited = overrides or set()
     succeeded: list[str] = []
     already_posted: list[str] = []
 
@@ -374,6 +449,7 @@ def post_entries(
                         error,
                         resolve_failed=True,
                     )
+                audit_resolve_override(state, item, thread, audited)
                 record["resolvedAt"] = now_iso()
                 add_event(state, "resolved", f"item #{item['n']} thread {thread['id']}")
                 item["updatedAt"] = now_iso()
@@ -422,6 +498,7 @@ def post_entries(
                     error,
                     resolve_failed=True,
                 )
+            audit_resolve_override(state, item, thread, audited)
             record["resolvedAt"] = now_iso()
             add_event(state, "resolved", f"item #{item['n']} thread {thread['id']}")
 
@@ -446,6 +523,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.thread and not args.item:
         raise ScriptError("--thread requires --item; it cannot select a thread in a batch.")
 
+    if args.resolve_other and not args.resolve:
+        raise ScriptError(
+            "--resolve-other only widens --resolve; it cannot resolve anything on "
+            "its own. Pass --resolve as well, or drop --resolve-other."
+        )
+
     path = resolve_state_file(args.state)
     state = load_state(path)
 
@@ -454,13 +537,30 @@ def main(argv: list[str] | None = None) -> int:
     else:
         selected, entries = single_item_entries(state, args)
 
-    print_preview(state, selected, entries, args=args, batch=args.all_approved)
+    overrides: list[dict] = []
+    if args.resolve:
+        overrides = check_resolve_guard(entries, allow_other=args.resolve_other)
+
+    print_preview(
+        state,
+        selected,
+        entries,
+        args=args,
+        batch=args.all_approved,
+        overrides=overrides,
+    )
 
     if not args.post:
         print("Preview only. Re-run with --post to send.")
         return 0
 
-    return post_entries(path, state, entries, resolve=args.resolve)
+    return post_entries(
+        path,
+        state,
+        entries,
+        resolve=args.resolve,
+        overrides={thread["id"] for thread in overrides},
+    )
 
 
 if __name__ == "__main__":

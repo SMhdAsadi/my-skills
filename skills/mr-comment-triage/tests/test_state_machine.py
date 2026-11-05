@@ -441,7 +441,11 @@ class PostGateTests(helpers.RepoCase, unittest.TestCase):
                 self.assertEqual(cap.code, 0, cap.stderr)
 
     def test_resolve_records_resolution_per_thread(self):
-        self.approved_state()
+        self.write_state(
+            threads=[helpers.make_thread("gl:d1", author="me", authorKind="self")],
+            items=[helpers.make_item(1)],
+        )
+        run_state(self, "approve", "1")
         self.fake.add_glab("{}")
         self.fake.add_glab("{}")
         self.fake.add_glab("{}")

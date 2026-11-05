@@ -24,6 +24,11 @@ import triage_state as state_cmd  # noqa: E402
 
 DRAFT = "Added the guard in src/app.py."
 NOTE_URL = "https://gitlab.example.com/note/7"
+# `--resolve` closes only your own threads; these fixtures are self-authored.
+SELF_THREADS = [
+    helpers.make_thread("gl:d1", author="me", authorKind="self"),
+    helpers.make_thread("gl:d2", author="me", authorKind="self"),
+]
 
 
 class PostTests(helpers.RepoCase, unittest.TestCase):
@@ -71,7 +76,11 @@ class PostTests(helpers.RepoCase, unittest.TestCase):
         self.assertEqual(item["status"], "posted")
 
     def test_post_and_resolved_events_are_recorded_per_thread(self):
-        self.approve(threadIds=["gl:d1", "gl:d2"], replyDraft=DRAFT)
+        self.approve(
+            threads=SELF_THREADS,
+            threadIds=["gl:d1", "gl:d2"],
+            replyDraft=DRAFT,
+        )
         for _ in range(4):
             self.fake.add_glab("{}")
 
@@ -146,7 +155,7 @@ class PostTests(helpers.RepoCase, unittest.TestCase):
         self.assertEqual(len(self.item()["posts"]), 1)
 
     def test_failed_resolve_keeps_the_post_record_and_can_be_retried(self):
-        self.approve(replyDraft=DRAFT)
+        self.approve(threads=[SELF_THREADS[0]], replyDraft=DRAFT)
         self.fake.add_glab(json.dumps({"url": NOTE_URL}))
         self.fake.fail_glab("glab: 500 server error")
 
@@ -233,8 +242,11 @@ class PostTests(helpers.RepoCase, unittest.TestCase):
         reply.run = spy
         return spy.snapshots
 
-    def approve(self, **overrides) -> None:
-        self.write_state(items=[helpers.make_item(1, **overrides)])
+    def approve(self, *, threads=None, **overrides) -> None:
+        state = self.base_state(items=[helpers.make_item(1, **overrides)])
+        if threads is not None:
+            state["threads"] = threads
+        self.write_state(state)
         cap = self.run_state("approve", "1")
         self.assertEqual(cap.code, 0, cap.stderr)
 

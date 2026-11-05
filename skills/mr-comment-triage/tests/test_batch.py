@@ -57,8 +57,8 @@ class BatchTests(helpers.RepoCase, unittest.TestCase):
 
     def test_all_approved_previews_every_item_and_thread_in_one_output(self):
         threads = [
-            helpers.make_thread("gl:d1"),
-            helpers.make_thread("gl:d2", author="omar", anchor={
+            helpers.make_thread("gl:d1", author="me", authorKind="self"),
+            helpers.make_thread("gl:d2", author="me", authorKind="self", anchor={
                 "kind": "inline",
                 "path": helpers.SOURCE_PATH,
                 "oldPath": None,
@@ -89,8 +89,7 @@ class BatchTests(helpers.RepoCase, unittest.TestCase):
         self.assertIn("PUSH_BACK", cap.stdout)
         self.assertIn("gl:d1", cap.stdout)
         self.assertIn("gl:d2", cap.stdout)
-        self.assertIn("@sara", cap.stdout)
-        self.assertIn("@omar", cap.stdout)
+        self.assertEqual(cap.stdout.count("@me"), 2, "each selected thread names its author")
         self.assertIn("src/app.py:3 (new)", cap.stdout)
         self.assertIn("src/app.py:7 (new)", cap.stdout)
         self.assertIn(DRAFT_ONE, cap.stdout)
@@ -208,7 +207,10 @@ class BatchTests(helpers.RepoCase, unittest.TestCase):
             self.assertEqual(item["status"], "posted")
 
     def test_batch_resolve_reports_and_records_each_resolution(self):
-        threads = [helpers.make_thread("gl:d1"), helpers.make_thread("gl:d2")]
+        threads = [
+            helpers.make_thread("gl:d1", author="me", authorKind="self"),
+            helpers.make_thread("gl:d2", author="me", authorKind="self"),
+        ]
         items = [
             helpers.make_item(1, threadIds=["gl:d1"], verdict="PUSH_BACK", replyDraft=DRAFT_ONE),
             helpers.make_item(2, threadIds=["gl:d2"], verdict="ALREADY_FIXED", replyDraft=DRAFT_TWO),

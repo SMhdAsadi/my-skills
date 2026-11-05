@@ -81,6 +81,12 @@ def anchor_label(item: dict, threads: dict) -> str:
     return ", ".join(anchors) or "—"
 
 
+def orphan_detail(item: dict) -> str:
+    """Name the gone threads so an orphan warning is actionable, not decorative."""
+    missing = ", ".join(item.get("missingThreadIds") or []) or "unknown thread"
+    return f"missing thread(s) {missing}; re-plan or drop it before posting"
+
+
 def execution_order(items: list[dict]) -> list[dict]:
     return sorted(
         items,
@@ -92,6 +98,9 @@ def render_items(items: list[dict], threads: dict) -> None:
     if not items:
         print("No triaged items.")
         return
+    for item in sorted(items, key=lambda entry: entry["n"]):
+        if item.get("orphaned"):
+            print(f"warning: item #{item['n']} is orphaned — {orphan_detail(item)}.")
     print("| # | Anchor | Verdict | Severity | Status | Proposed action |")
     print("|---|---|---|---|---|---|")
     for item in sorted(items, key=lambda entry: entry["n"]):
@@ -637,6 +646,8 @@ def cmd_show(args: argparse.Namespace) -> int:
             f"#{item['n']:<3} {item['verdict']:<13} {item['severity']:<15} "
             f"{item['status']:<10} {anchor_label(item, threads)}"
         )
+        if item.get("orphaned"):
+            print(f"     orphaned — {orphan_detail(item)}.")
         print(f"     {truncate(item.get('claim'), 110)}")
     return 0
 

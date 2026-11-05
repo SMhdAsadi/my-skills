@@ -553,7 +553,7 @@ class FetchStateTests(helpers.RepoCase, unittest.TestCase):
         super().setUp()
         self.install(fetch)
 
-    def fetch_ok(self):
+    def fetch_ok(self, discussions="[]"):
         self.fake.add_glab(
             json.dumps(
                 {
@@ -564,7 +564,7 @@ class FetchStateTests(helpers.RepoCase, unittest.TestCase):
             )
         )
         self.fake.add_glab('{"username": "me"}')
-        self.fake.add_glab("[]")
+        self.fake.add_glab(discussions)
         cap = helpers.capture()
         cap.run(
             fetch.main,
@@ -604,7 +604,26 @@ class FetchStateTests(helpers.RepoCase, unittest.TestCase):
                 }
             ]
         )
-        self.fetch_ok()
+        # The item's thread must still exist or the refetch rightly orphans it.
+        self.fetch_ok(
+            json.dumps(
+                [
+                    {
+                        "id": "d1",
+                        "notes": [
+                            {
+                                "system": False,
+                                "resolvable": True,
+                                "resolved": False,
+                                "body": "Comment.",
+                                "author": {"username": "sara"},
+                                "position": None,
+                            }
+                        ],
+                    }
+                ]
+            )
+        )
         item = self.read_state()["items"][0]
         self.assertEqual(item["posts"], [])
         self.assertIsNone(item["approvedAt"])

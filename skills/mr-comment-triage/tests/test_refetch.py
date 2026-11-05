@@ -287,6 +287,32 @@ class RefetchTests(helpers.RepoCase, unittest.TestCase):
         self.assertIn("gl:gone", cap.stderr)
         self.assertEqual(self.fake.glab_calls, [], "refused before any network call")
 
+    def test_batch_posting_refuses_an_orphaned_item_before_any_call(self):
+        self.write_state(
+            items=[
+                helpers.make_item(
+                    1,
+                    threadIds=["gl:d1"],
+                    verdict="PUSH_BACK",
+                    evidence=[],
+                    replyDraft="Not a defect.",
+                ),
+                approved_item(
+                    2,
+                    threadIds=["gl:gone"],
+                    orphaned=True,
+                    missingThreadIds=["gl:gone"],
+                ),
+            ]
+        )
+
+        cap = self.run_post("--all-approved", "--post")
+
+        self.assertEqual(cap.code, 1)
+        self.assertIn("orphaned", cap.stderr.lower())
+        self.assertIn("gl:gone", cap.stderr)
+        self.assertEqual(self.fake.glab_calls, [], "refused before any network call")
+
     # -- fresh threads ---------------------------------------------------
 
     def test_new_threads_are_available_for_planning(self):

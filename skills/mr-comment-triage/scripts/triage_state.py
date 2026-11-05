@@ -35,17 +35,21 @@ from _common import (
     VERDICTS,
     ScriptError,
     add_event,
+    anchor_label as thread_anchor_label,
     approval_hash,
     ensure_item_defaults,
     find_item,
     invalidate_approval,
     load_state,
+    normalize_evidence_entry,
     now_iso,
+    refresh_item_status,
     repo_root,
     resolve_state_dir,
     resolve_state_file,
     run,
     save_state,
+    side_suffix,
     verify_evidence,
 )
 
@@ -62,25 +66,16 @@ def truncate(text: str | None, width: int = 88) -> str:
     return clean if len(clean) <= width else clean[: width - 1] + "…"
 
 
-def side_suffix(anchor: dict) -> str:
-    """Show which diff side a line anchor refers to (`old` for deletions)."""
-    side = anchor.get("side")
-    return f" ({side})" if side else ""
-
-
 def anchor_label(item: dict, threads: dict) -> str:
+    """Item-level wrapper: one backticked label per distinct thread anchor."""
     anchors = []
     for thread_id in item.get("threadIds", []):
         thread = threads.get(thread_id)
         if not thread:
             continue
-        anchor = thread["anchor"]
-        if anchor["kind"] == "inline":
-            label = f"`{anchor['path']}:{anchor['line']}{side_suffix(anchor)}`"
-        elif anchor["kind"] == "file":
-            label = f"`{anchor['path']}`"
-        else:
-            label = "MR-level"
+        label = thread_anchor_label(thread)
+        if (thread.get("anchor") or {}).get("kind") in ("inline", "file"):
+            label = f"`{label}`"
         if label not in anchors:
             anchors.append(label)
     return ", ".join(anchors) or "—"
@@ -152,21 +147,15 @@ def cmd_threads(args: argparse.Namespace) -> int:
 
 
 def parse_evidence(entries: list[str]) -> list[dict]:
-    """Parse `path:line[:note]` into the evidence list."""
+    """Parse `path:line[:note]` with the shared evidence normalizer."""
     parsed = []
     for entry in entries:
-        match = re.match(r"^(?P<path>[^:]+):(?P<line>\d+)(?::(?P<note>.*))?$", entry.strip())
-        if not match:
+        try:
+            parsed.append(normalize_evidence_entry(entry))
+        except ScriptError:
             raise ScriptError(
                 f"--evidence expects path:line or path:line:note, got {entry!r}"
-            )
-        parsed.append(
-            {
-                "path": match.group("path"),
-                "line": int(match.group("line")),
-                "note": (match.group("note") or "").strip(),
-            }
-        )
+            ) from None
     return parsed
 
 
@@ -326,12 +315,55 @@ def build_plan_items(state: dict, documents: list, root: Path) -> list[dict]:
     return items
 
 
+def carry_post_journal(state: dict, items: list[dict]) -> list[dict]:
+    """Keep the record of every posted thread across a plan replacement.
+
+    A new plan may re-describe an item, but it may not silently forget that a
+    reply was already published. Posted thread ids must still be covered, and
+    their journal records move to the new item without restoring an old
+    approval. A partial journal leaves the item resumable.
+    """
+    posted: dict[str, dict] = {}
+    owners: dict[str, int] = {}
+    for old in state.get("items") or []:
+        for post in old.get("posts") or []:
+            thread_id = post.get("threadId")
+            if thread_id and post.get("postedAt"):
+                posted[thread_id] = copy.deepcopy(post)
+                owners[thread_id] = old.get("n")
+
+    planned = {
+        thread_id for item in items for thread_id in item.get("threadIds") or []
+    }
+    omitted = sorted(set(posted) - planned)
+    if omitted:
+        listing = ", ".join(
+            f"{thread_id} (item #{owners[thread_id]})" for thread_id in omitted
+        )
+        raise ScriptError(
+            f"Plan omits thread(s) that were already posted: {listing}. "
+            "A plan cannot erase the reply journal; keep those thread ids or "
+            "re-fetch with --reset to start a new run."
+        )
+
+    for item in items:
+        records = [
+            copy.deepcopy(posted[thread_id])
+            for thread_id in item.get("threadIds") or []
+            if thread_id in posted
+        ]
+        if records:
+            item["posts"] = records
+            refresh_item_status(item)
+    return items
+
+
 def cmd_plan(args: argparse.Namespace) -> int:
     path = resolve_state_file(args.state)
     state = load_state(path)
     documents = load_plan_document(args.from_plan)
     root = repo_root() or Path.cwd()
-    items = build_plan_items(state, documents, root)
+    items = carry_post_journal(state, build_plan_items(state, documents, root))
 
     plan_name = Path(args.from_plan).name
     if args.dry_run:
@@ -389,10 +421,38 @@ def cmd_set(args: argparse.Namespace) -> int:
         existing["action"] = args.action
     if args.threads:
         known = {thread["id"] for thread in state.get("threads", [])}
-        ids = [part.strip() for part in args.threads.split(",") if part.strip()]
+        ids = [
+            part.strip()
+            for part in args.threads.split(",")
+            if part.strip()
+        ]
+        # One issue, one item: repeated ids collapse, and an id owned by a
+        # different item is a mistake rather than a second reply target.
+        ids = list(dict.fromkeys(ids))
         unknown = [thread_id for thread_id in ids if thread_id not in known]
         if unknown:
             raise ScriptError(f"Unknown thread id(s): {', '.join(unknown)}")
+        owners: dict[str, list[int]] = {}
+        for other in state.get("items", []):
+            if other.get("n") == args.item:
+                continue
+            for thread_id in other.get("threadIds") or []:
+                owners.setdefault(thread_id, []).append(other["n"])
+        conflicts = [
+            (thread_id, owners[thread_id])
+            for thread_id in ids
+            if thread_id in owners
+        ]
+        if conflicts:
+            listing = ", ".join(
+                f"{thread_id} (item {', '.join('#' + str(n) for n in numbers)})"
+                for thread_id, numbers in conflicts
+            )
+            raise ScriptError(
+                f"Thread id(s) already assigned to another item: {listing}. "
+                "One thread can only be triaged once; edit the owning item or "
+                "remove the id from this one."
+            )
         existing["threadIds"] = ids
     if args.evidence:
         existing["evidence"] = parse_evidence(args.evidence)
@@ -435,6 +495,23 @@ def cmd_set(args: argparse.Namespace) -> int:
                 raise ScriptError(
                     f"Item #{existing['n']} is {current!r}; only an approved item can "
                     "move to 'applied'. Run `triage_state.py approve` first."
+                )
+            # The clean tree is part of the authorisation, not a suggestion.
+            # It must have been observed after this approval; the tree itself is
+            # not inspected here, because the applied fix may be uncommitted.
+            approved_at = existing.get("approvedAt")
+            clean = [
+                event.get("at")
+                for event in state.get("events", [])
+                if event.get("type") == "preflight-clean"
+            ]
+            if not approved_at or not any(
+                at and at >= approved_at for at in clean
+            ):
+                raise ScriptError(
+                    f"Item #{existing['n']} cannot be applied: no clean preflight "
+                    "recorded since it was approved. Run `triage_state.py preflight` "
+                    "after `approve` and before applying."
                 )
             existing["status"] = "applied"
         elif target == "verified":
@@ -543,6 +620,12 @@ def cmd_approve(args: argparse.Namespace) -> int:
             # Held back for a decision; it is never executed, so its citations
             # do not authorise anything yet.
             continue
+        if effective_verdict in CODE_VERDICTS and not (item.get("action") or "").strip():
+            raise ScriptError(
+                f"Item #{item['n']} is {effective_verdict} but has no action. "
+                f"Run `triage_state.py set --item {item['n']} --action ...` before "
+                "approving an executable item."
+            )
         try:
             verify_evidence(item.get("evidence") or [], root)
         except ScriptError as error:

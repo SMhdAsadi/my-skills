@@ -121,6 +121,7 @@ class SetTransitionTests(helpers.RepoCase, unittest.TestCase):
     def test_approved_can_become_applied(self):
         self.write_state(items=[helpers.make_item(1)])
         run_state(self, "approve", "all")
+        self.assertEqual(run_state(self, "preflight").code, 0)
         cap = run_state(self, "set", "--item", "1", "--status", "applied")
         self.assertEqual(cap.code, 0, cap.stderr)
         self.assertEqual(self.read_state()["items"][0]["status"], "applied")
@@ -135,6 +136,7 @@ class SetTransitionTests(helpers.RepoCase, unittest.TestCase):
     def test_applied_can_become_verified(self):
         self.write_state(items=[helpers.make_item(1)])
         run_state(self, "approve", "all")
+        self.assertEqual(run_state(self, "preflight").code, 0)
         run_state(self, "set", "--item", "1", "--status", "applied")
         cap = run_state(self, "set", "--item", "1", "--status", "verified")
         self.assertEqual(cap.code, 0, cap.stderr)
@@ -143,6 +145,7 @@ class SetTransitionTests(helpers.RepoCase, unittest.TestCase):
     def test_applied_cannot_be_skipped(self):
         self.write_state(items=[helpers.make_item(1)])
         run_state(self, "approve", "all")
+        self.assertEqual(run_state(self, "preflight").code, 0)
         run_state(self, "set", "--item", "1", "--status", "applied")
         cap = run_state(self, "set", "--item", "1", "--status", "skipped")
         self.assertEqual(cap.code, 1)
@@ -181,6 +184,33 @@ class SetTransitionTests(helpers.RepoCase, unittest.TestCase):
         self.assertEqual(cap.code, 1)
         self.assertEqual(self.state_path.read_bytes(), before)
 
+    def test_set_dedupes_thread_ids_within_an_item(self):
+        self.write_state()
+        cap = run_state(
+            self,
+            "set", "--item", "1", "--verdict", "ACCEPT",
+            "--threads", "gl:d1, gl:d1, gl:d2",
+        )
+        self.assertEqual(cap.code, 0, cap.stderr)
+        self.assertEqual(
+            self.read_state()["items"][0]["threadIds"], ["gl:d1", "gl:d2"]
+        )
+
+    def test_set_rejects_a_thread_id_owned_by_another_item(self):
+        self.write_state(items=[helpers.make_item(1, threadIds=["gl:d1"])])
+        before = self.state_path.read_bytes()
+
+        cap = run_state(
+            self,
+            "set", "--item", "2", "--verdict", "ACCEPT",
+            "--threads", "gl:d1, gl:d2",
+        )
+
+        self.assertEqual(cap.code, 1)
+        self.assertIn("gl:d1", cap.stderr)
+        self.assertIn("#1", cap.stderr)
+        self.assertEqual(self.state_path.read_bytes(), before)
+
     def test_new_item_carries_v2_fields(self):
         self.write_state()
         cap = run_state(self, "set", "--item", "5", "--verdict", "ACCEPT")
@@ -200,7 +230,7 @@ class ApprovalTests(helpers.RepoCase, unittest.TestCase):
         self.write_state(
             items=[
                 helpers.make_item(1, verdict="ACCEPT"),
-                helpers.make_item(2, verdict="CLARIFY", action="", replyDraft="Which behaviour?"),
+                helpers.make_item(2, verdict="CLARIFY", action="Handle it.", replyDraft="Which behaviour?"),
                 helpers.make_item(3, verdict="PUSH_BACK"),
                 helpers.make_item(4, verdict="DEFER", action="", replyDraft="Out of scope."),
             ]
@@ -269,6 +299,28 @@ class ApprovalTests(helpers.RepoCase, unittest.TestCase):
         self.assertEqual(self.state_path.read_bytes(), before)
         self.assertIn("dry run", cap.stdout)
 
+    def test_approve_refuses_a_code_item_without_an_action(self):
+        self.write_state(items=[helpers.make_item(1, action="   ")])
+        before = self.state_path.read_bytes()
+
+        cap = run_state(self, "approve", "1")
+
+        self.assertEqual(cap.code, 1)
+        self.assertIn("#1", cap.stderr)
+        self.assertIn("action", cap.stderr)
+        self.assertEqual(self.state_path.read_bytes(), before)
+        self.assertEqual(self.read_state()["items"][0]["status"], "proposed")
+
+    def test_approve_override_to_a_code_verdict_requires_an_action(self):
+        before = self.state_path.read_bytes()
+
+        cap = run_state(self, "approve", "4=ACCEPT")
+
+        self.assertEqual(cap.code, 1)
+        self.assertIn("#4", cap.stderr)
+        self.assertIn("action", cap.stderr)
+        self.assertEqual(self.state_path.read_bytes(), before)
+
     def test_hash_ignores_non_material_fields(self):
         run_state(self, "approve", "1")
         first = self.read_state()["items"][0]["approvalHash"]
@@ -323,6 +375,7 @@ class ApprovalTests(helpers.RepoCase, unittest.TestCase):
             with self.subTest(status=status):
                 self.write_state(items=[helpers.make_item(1)])
                 run_state(self, "approve", "1")
+                self.assertEqual(run_state(self, "preflight").code, 0)
                 run_state(self, "set", "--item", "1", "--status", status)
                 run_state(self, "set", "--item", "1", "--action", "Rewrite it.")
                 state = self.read_state()
@@ -435,6 +488,7 @@ class PostGateTests(helpers.RepoCase, unittest.TestCase):
         for status in ("applied", "verified"):
             with self.subTest(status=status):
                 self.approved_state()
+                self.assertEqual(run_state(self, "preflight").code, 0)
                 run_state(self, "set", "--item", "1", "--status", status)
                 self.fake.add_glab("{}")
                 cap = run_post(self, "--item", "1", "--body", "Done", "--post")

@@ -326,6 +326,60 @@ class EvidenceVerificationTests(PlanCase, unittest.TestCase):
         with self.assertRaises(_common.ScriptError):
             _common.verify_evidence(["../outside.py:1"], self.root)
 
+    def test_verify_evidence_reads_head_not_the_dirty_working_tree(self):
+        # The file has 12 lines at HEAD; the dirty copy has one.
+        (self.root / helpers.SOURCE_PATH).write_text("only = 1\n", encoding="utf-8")
+        entries = _common.verify_evidence(["src/app.py:12"], self.root)
+        self.assertEqual(entries[0]["line"], 12)
+
+    def test_verify_evidence_rejects_a_line_only_present_on_disk(self):
+        (self.root / helpers.SOURCE_PATH).write_text(
+            helpers.SOURCE + "extra = 13\n", encoding="utf-8"
+        )
+        with self.assertRaises(_common.ScriptError) as caught:
+            _common.verify_evidence(["src/app.py:13"], self.root)
+        self.assertIn("past the end", str(caught.exception).lower())
+
+    def test_verify_evidence_requires_a_git_checkout_with_head(self):
+        outside = self.tmp_path / "not-a-repo"
+        outside.mkdir()
+        (outside / "file.py").write_text("x = 1\n", encoding="utf-8")
+
+        with self.assertRaises(_common.ScriptError) as caught:
+            _common.verify_evidence(["file.py:1"], outside)
+
+        message = str(caught.exception)
+        self.assertIn("HEAD", message)
+        self.assertIn("git", message.lower())
+
+    def test_untracked_file_is_not_evidence_at_head(self):
+        self.write_state()
+        (self.root / "src" / "new.py").write_text("x = 1\n", encoding="utf-8")
+
+        cap = self.plan([plan_item(evidence=["src/new.py:1"])])
+
+        self.assertEqual(cap.code, 1)
+        self.assertIn("does not exist at HEAD", cap.stderr)
+
+    def test_dirty_shrink_does_not_invalidate_a_citation_valid_at_head(self):
+        self.write_state()
+        (self.root / helpers.SOURCE_PATH).write_text("only = 1\n", encoding="utf-8")
+
+        cap = self.plan([plan_item(evidence=["src/app.py:12"])])
+
+        self.assertEqual(cap.code, 0, cap.stderr)
+
+    def test_dirty_growth_does_not_validate_a_citation_past_head(self):
+        self.write_state()
+        (self.root / helpers.SOURCE_PATH).write_text(
+            helpers.SOURCE + "extra = 13\n", encoding="utf-8"
+        )
+
+        cap = self.plan([plan_item(evidence=["src/app.py:13"])])
+
+        self.assertEqual(cap.code, 1)
+        self.assertIn("past the end", cap.stderr.lower())
+
 
 class ApproveEvidenceGateTests(PlanCase, unittest.TestCase):
     def setUp(self):
@@ -374,6 +428,40 @@ class ApproveEvidenceGateTests(PlanCase, unittest.TestCase):
         self.assertEqual(cap.code, 0, cap.stderr)
         self.assertEqual(self.read_state()["items"][0]["status"], "approved")
 
+    def test_approve_uses_head_after_the_working_tree_shrinks(self):
+        self.write_state(
+            items=[
+                helpers.make_item(
+                    1, evidence=[{"path": "src/app.py", "line": 12, "note": "last"}]
+                )
+            ]
+        )
+        (self.root / helpers.SOURCE_PATH).write_text("only = 1\n", encoding="utf-8")
+
+        cap = run_state(self, "approve", "1")
+
+        self.assertEqual(cap.code, 0, cap.stderr)
+        self.assertEqual(self.read_state()["items"][0]["status"], "approved")
+
+    def test_approve_rejects_a_line_only_present_on_disk(self):
+        self.write_state(
+            items=[
+                helpers.make_item(
+                    1,
+                    evidence=[{"path": "src/app.py", "line": 13, "note": "not at HEAD"}],
+                )
+            ]
+        )
+        (self.root / helpers.SOURCE_PATH).write_text(
+            helpers.SOURCE + "extra = 13\n", encoding="utf-8"
+        )
+
+        cap = run_state(self, "approve", "1")
+
+        self.assertEqual(cap.code, 1)
+        self.assertIn("past the end", cap.stderr.lower())
+        self.assertEqual(self.read_state()["items"][0]["status"], "proposed")
+
     def test_held_reply_only_items_do_not_block_the_batch(self):
         self.write_state(
             items=[
@@ -392,6 +480,94 @@ class ApproveEvidenceGateTests(PlanCase, unittest.TestCase):
         items = {item["n"]: item for item in self.read_state()["items"]}
         self.assertEqual(items[1]["status"], "approved")
         self.assertEqual(items[2]["status"], "proposed")
+
+
+def posted_item(number: int = 1, thread_id: str = "gl:d1", **overrides) -> dict:
+    record = {
+        "threadId": thread_id,
+        "postedAt": "2026-11-02T10:00:00Z",
+        "resolvedAt": None,
+        "body": "Already answered.",
+        "url": "https://gitlab.example.com/note/7",
+        "source": "draft",
+    }
+    return helpers.make_item(
+        number,
+        threadIds=[thread_id],
+        verdict="PUSH_BACK",
+        status="posted",
+        action="",
+        replyDraft="Already answered.",
+        approvedAt="2026-11-02T09:00:00Z",
+        approvalHash="deadbeef",
+        posts=[record],
+        **overrides,
+    )
+
+
+class PlanJournalTests(PlanCase, unittest.TestCase):
+    """A plan replacement must never erase the record of what was posted."""
+
+    def test_plan_refuses_to_drop_a_posted_thread(self):
+        self.write_state(items=[posted_item(1, "gl:d1")])
+        before = self.state_path.read_bytes()
+
+        cap = self.plan(
+            [
+                plan_item(
+                    threadIds=["gl:d2"],
+                    verdict="PUSH_BACK",
+                    action="",
+                    replyDraft="Not a defect.",
+                )
+            ]
+        )
+
+        self.assertEqual(cap.code, 1)
+        self.assertIn("gl:d1", cap.stderr)
+        self.assertEqual(self.state_path.read_bytes(), before, "a refusal writes nothing")
+
+    def test_plan_carries_the_post_record_and_derives_posted(self):
+        record = posted_item(1, "gl:d1")["posts"][0]
+        self.write_state(items=[posted_item(1, "gl:d1")])
+
+        cap = self.plan(
+            [
+                plan_item(
+                    threadIds=["gl:d1"],
+                    verdict="PUSH_BACK",
+                    action="",
+                    replyDraft="Not a defect.",
+                )
+            ]
+        )
+
+        self.assertEqual(cap.code, 0, cap.stderr)
+        item = self.read_state()["items"][0]
+        self.assertEqual(item["posts"], [record])
+        self.assertEqual(item["status"], "posted")
+        self.assertIsNone(item["approvedAt"], "stale approvals are not carried")
+        self.assertIsNone(item["approvalHash"])
+
+    def test_partial_journal_carry_keeps_the_item_resumable(self):
+        record = posted_item(1, "gl:d1")["posts"][0]
+        self.write_state(items=[posted_item(1, "gl:d1")])
+
+        cap = self.plan(
+            [
+                plan_item(
+                    threadIds=["gl:d1", "gl:d2"],
+                    verdict="PUSH_BACK",
+                    action="",
+                    replyDraft="Not a defect.",
+                )
+            ]
+        )
+
+        self.assertEqual(cap.code, 0, cap.stderr)
+        item = self.read_state()["items"][0]
+        self.assertEqual(item["posts"], [record])
+        self.assertEqual(item["status"], "proposed", "the unposted thread stays actionable")
 
 
 if __name__ == "__main__":

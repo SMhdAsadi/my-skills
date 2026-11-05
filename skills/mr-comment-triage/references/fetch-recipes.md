@@ -120,6 +120,8 @@ If `load_state` reports a schema mismatch, the file predates schema v2. Re-run `
 | State filename is unexpected | The slug is derived from `repo`, not the local directory | Check `host`/`repo` in the file or re-run with explicit `--repo` |
 | `schema version 1` error | Old state file | Delete it or re-run `fetch_threads.py` with `--reset` |
 | Item will not post | It is orphaned, unapproved, or already posted | `triage_state.py show`; re-fetch and re-plan orphans, run `approve` for a code item, and let the journal skip already-posted threads |
+| Reply batch refuses with a thread ownership conflict | Two items name the same thread, or a thread already has a post record on another item | Keep each thread id on exactly one item; inspect `show`, fix the plan, and retry. The refusal happens before any preview or `glab` call |
+| `set --status applied` refuses with "no clean preflight" | The clean check was not recorded after this item was approved | Run `triage_state.py preflight` after `approve` and before applying; preflight taken earlier, or a dirty preflight, does not count |
 | Reply batch refuses with "Gate 1 is required" | The plan contains an unapproved `ACCEPT`/`ALTERNATIVE` item | `triage_state.py approve all`, or skip the code item and re-run `--all-approved` |
 | `--resolve` refuses a thread you own | `authorKind` is `human`, not `self` | Authenticate the account that authored it, or use `--resolve-other` deliberately (audited) |
 | Execute phase refuses to start | `preflight` found a dirty tree | Commit or stash the named paths, then re-run `triage_state.py preflight` |

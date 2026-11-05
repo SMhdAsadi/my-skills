@@ -379,6 +379,130 @@ class BatchTests(helpers.RepoCase, unittest.TestCase):
         self.assertEqual(self.item(1)["status"], "skipped")
         self.assertEqual(self.item(2)["status"], "posted")
 
+    # -- cross-item thread ownership -------------------------------------
+
+    def test_batch_refuses_a_thread_selected_by_two_items(self):
+        threads = [helpers.make_thread("gl:d1")]
+        items = [
+            helpers.make_item(1, threadIds=["gl:d1"], verdict="PUSH_BACK", replyDraft=DRAFT_ONE),
+            helpers.make_item(2, threadIds=["gl:d1"], verdict="PUSH_BACK", replyDraft=DRAFT_TWO),
+        ]
+        self.write_state(self.base_state(threads=threads, items=items))
+        before = self.state_path.read_bytes()
+
+        cap = self.run_post("--all-approved", "--post")
+
+        self.assertEqual(cap.code, 1)
+        self.assertIn("gl:d1", cap.stderr)
+        self.assertIn("#1", cap.stderr)
+        self.assertIn("#2", cap.stderr)
+        self.assertEqual(self.fake.glab_calls, [], "refused before any network call")
+        self.assertEqual(self.state_path.read_bytes(), before)
+
+    def test_batch_refuses_a_thread_already_posted_by_another_item(self):
+        threads = [
+            helpers.make_thread("gl:d1"),
+            helpers.make_thread("gl:d2"),
+        ]
+        owner = helpers.make_item(
+            1,
+            threadIds=["gl:d1"],
+            verdict="PUSH_BACK",
+            replyDraft=DRAFT_ONE,
+            status="posted",
+            posts=[
+                {
+                    "threadId": "gl:d2",
+                    "postedAt": "2026-11-02T10:00:00Z",
+                    "resolvedAt": None,
+                    "body": DRAFT_ONE,
+                    "url": None,
+                    "source": "draft",
+                }
+            ],
+        )
+        duplicate = helpers.make_item(
+            2, threadIds=["gl:d2"], verdict="PUSH_BACK", replyDraft=DRAFT_TWO
+        )
+        self.write_state(self.base_state(threads=threads, items=[owner, duplicate]))
+        before = self.state_path.read_bytes()
+
+        cap = self.run_post("--all-approved", "--post")
+
+        self.assertEqual(cap.code, 1)
+        self.assertIn("gl:d2", cap.stderr)
+        self.assertIn("#1", cap.stderr)
+        self.assertIn("#2", cap.stderr)
+        self.assertEqual(self.fake.glab_calls, [])
+        self.assertEqual(self.state_path.read_bytes(), before)
+
+    def test_single_item_refuses_a_thread_named_by_another_item(self):
+        threads = [helpers.make_thread("gl:d1"), helpers.make_thread("gl:d2")]
+        items = [
+            helpers.make_item(1, threadIds=["gl:d1"], verdict="PUSH_BACK", replyDraft=DRAFT_ONE),
+            helpers.make_item(
+                2,
+                threadIds=["gl:d1", "gl:d2"],
+                verdict="PUSH_BACK",
+                replyDraft=DRAFT_TWO,
+                status="approved",
+            ),
+        ]
+        self.write_state(self.base_state(threads=threads, items=items))
+
+        cap = self.run_post("--item", "2", "--post")
+
+        self.assertEqual(cap.code, 1)
+        self.assertIn("gl:d1", cap.stderr)
+        self.assertIn("#1", cap.stderr)
+        self.assertIn("#2", cap.stderr)
+        self.assertEqual(self.fake.glab_calls, [])
+
+    # -- reply-only fast path covers DEFER --------------------------------
+
+    def test_defer_is_eligible_on_the_reply_only_fast_path(self):
+        threads = [helpers.make_thread("gl:d1")]
+        items = [
+            helpers.make_item(
+                1,
+                threadIds=["gl:d1"],
+                verdict="DEFER",
+                action="",
+                replyDraft="Follow-up issue.",
+            )
+        ]
+        self.write_state(self.base_state(threads=threads, items=items))
+
+        preview = self.run_post("--all-approved")
+
+        self.assertEqual(preview.code, 0, preview.stderr)
+        self.assertIn("Follow-up issue.", preview.stdout)
+        self.fake.add_glab("{}")
+        posted = self.run_post("--all-approved", "--post")
+        self.assertEqual(posted.code, 0, posted.stderr)
+        self.assertEqual(self.item(1)["status"], "posted")
+
+    def test_a_proposed_accept_blocks_the_fast_path_even_with_a_defer(self):
+        threads = [helpers.make_thread("gl:d1"), helpers.make_thread("gl:d2")]
+        items = [
+            helpers.make_item(
+                1,
+                threadIds=["gl:d1"],
+                verdict="DEFER",
+                action="",
+                replyDraft="Follow-up issue.",
+            ),
+            helpers.make_item(2, threadIds=["gl:d2"], verdict="ACCEPT", replyDraft=DRAFT_ONE),
+        ]
+        self.write_state(self.base_state(threads=threads, items=items))
+
+        cap = self.run_post("--all-approved", "--post")
+
+        self.assertEqual(cap.code, 1)
+        self.assertIn("Gate 1", cap.stderr)
+        self.assertIn("#2", cap.stderr)
+        self.assertEqual(self.fake.glab_calls, [])
+
     # -- batch refuses unsafe overrides ----------------------------------
 
     def test_batch_refuses_a_single_body_override(self):

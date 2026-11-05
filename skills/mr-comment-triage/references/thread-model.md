@@ -185,10 +185,10 @@ Event types currently written: `fetched`, `refetched`, `head-moved`, `planned`, 
 
 Every evidence entry is `{path, line, note}` and is verified twice:
 
-1. `plan --from` proves the path exists, is a file inside the checkout, and `1 <= line <= line count` at HEAD.
+1. `plan --from` proves the path exists as a blob, is inside the checkout, and `1 <= line <= line count` at HEAD.
 2. `approve` re-verifies the same entries before writing an approval. A held `CLARIFY`/`DEFER` item is skipped because it authorises no execution.
 
-Evidence is required at plan time. An empty list is allowed when there is genuinely no line to cite; a missing field is not.
+Both checks read the file from `HEAD` (`git show HEAD:<path>`), not from the working tree. A dirty edit that adds lines cannot make an out-of-range citation valid, and one that removes lines cannot invalidate a citation that is still valid at HEAD. A non-git checkout or a repository with no commits is refused with a clear error. Evidence is required at plan time. An empty list is allowed when there is genuinely no line to cite; a missing field is not.
 
 `approvalHash = sha256(canonical_json({verdict, threadIds, action, evidence}))`. Those four fields are the material intent. Changing any of them clears `approvedAt` and `approvalHash`, returns `approved`/`applied`/`verified` to `proposed`, and appends an `approval-invalidated` event. Changing `claim`, `replyDraft`, or `severity` does not invalidate the approval, but the new text is what gets posted or rendered.
 
@@ -204,7 +204,7 @@ proposed ──approve──▶ approved ──apply──▶ applied ──chec
 
 - `proposed` — on the plan, not approved.
 - `approved` — written only by `triage_state.py approve`, with `approvedAt` and `approvalHash`.
-- `applied` — written only by `set --status applied`, and only from `approved`.
+- `applied` — written only by `set --status applied`, only from `approved`, and only when a `preflight-clean` event is recorded at or after `approvedAt`. A preflight taken before approval, or a dirty preflight (which records nothing), does not authorise the apply. The tree is not re-inspected at `set` time; the applied fix may legitimately be uncommitted.
 - `verified` — written only by `set --status verified`, and only from `approved` or `applied`.
 - `posted` — derived when every thread on the item has a post record but at least one is unresolved.
 - `resolved` — derived when every thread on the item has a post record with `resolvedAt`.
@@ -240,6 +240,8 @@ Re-fetching the same MR preserves triage work instead of resetting it:
 
 `--reset` discards items and events and starts clean. It is the only way to drop triage history.
 
+A later `plan --from` replaces `items` without erasing the reply journal. Every thread with a post record must still be named by the new plan; if the plan omits one, the whole document is refused and the state file stays byte-identical. When a posted thread is still planned, its record moves to the new item and the status is re-derived (`posted` or `resolved`), while the old approval metadata is not carried forward.
+
 `--include-resolved` keeps resolved threads so a reply can be checked for duplicates. The summary distinguishes them honestly: `threads 4 unresolved, 2 resolved kept`, never counting resolved threads as unresolved.
 
 ---
@@ -259,10 +261,13 @@ This is deliberately stricter than a warning. Posting a reply to a discussion id
 ## Invariants the scripts enforce
 
 - Unknown thread ids are rejected rather than silently dropped — a typo in a thread id would otherwise produce a verdict with no thread behind it.
-- A thread id may appear in one item only, and repeated ids inside an item are deduped in place.
+- A thread id may appear in one item only, and repeated ids inside an item are deduped in place. `set --threads` rejects an id already owned by another item, and `post_reply.py` refuses a selection where two items name the same thread or a thread already has a post record owned by another item — before any preview or external call.
+- A plan replacement cannot drop a thread that already has a post record; it carries the record instead of erasing the journal.
 - `plan --from` validates the whole document before writing; one bad item leaves the state file byte-identical.
+- `approve` rejects an executable verdict (`ACCEPT`/`ALTERNATIVE`) with an empty `action`.
 - `approve` replaces the plan and prints what it un-approved, so a narrowed selection can never look like an addition.
 - Only `approve` writes `approved`; only the execute phase writes `applied`/`verified`; only the reply phase writes `posted`/`resolved`.
+- `applied` requires a `preflight-clean` event recorded after the item's approval.
 - Only the reply phase can close a thread, and only `--resolve-other` can close one authored by someone else.
 - Saves are atomic (`.tmp` + `os.replace`), so an interrupted run cannot leave half a state file.
 - The state directory is chosen by `git check-ignore`, never by convention alone.

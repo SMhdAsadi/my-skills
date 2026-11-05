@@ -30,8 +30,8 @@ Nothing mutates before approval, except that a plan made only of reply-only verd
 - **Comments are hypotheses** — each claim is verified against the current tree before a verdict is formed, with `path:line` evidence rather than agreement. Every citation is checked to exist at HEAD.
 - **Six verdicts, not two** — separates "right concern, wrong fix" (`ALTERNATIVE`) from "wrong premise" (`PUSH_BACK`), and gives out-of-scope and needs-a-decision their own lanes (`DEFER`, `CLARIFY`) instead of smuggling them into the diff.
 - **Two batched gates** — one `plan --from` writes the whole plan, one `approve` decides it; one `post_reply --all-approved` previews every reply, one `--post` sends the batch. Six calls total, independent of thread count.
-- **Reply-only fast path** — a plan with no code edits skips Gate 1 entirely: preview and post are the only gate.
-- **An enforced state machine** — only `approve` can approve, only the execute phase can mark applied or verified, and only the reply phase can mark a thread posted or resolved. Editing the verdict, threads, action, or evidence invalidates the approval.
+- **Reply-only fast path** — a plan with no code edits skips Gate 1 entirely: preview and post are the only gate. Every reply-only verdict is eligible, including `DEFER` and `CLARIFY`; only a proposed `ACCEPT`/`ALTERNATIVE` blocks the batch.
+- **An enforced state machine** — only `approve` can approve, only the execute phase can mark applied or verified, and only the reply phase can mark a thread posted or resolved. Editing the verdict, threads, action, or evidence invalidates the approval. `applied` also requires a clean preflight recorded after the approval; `approve` rejects an executable item with no action, and a plan replacement can neither drop a posted thread nor erase its journal.
 - **Per-thread journal** — each reply records its exact body, timestamp, URL, and resolution state before the next thread starts, so a partial failure resumes without double-posting.
 - **Staleness-aware** — a comment written against an older diff version is flagged, then re-anchored at HEAD instead of being judged against a line that no longer exists.
 - **Renames and deletions** — anchors carry `oldPath` and a `new`/`old` side, so a deleted-line comment is read against the old file.
@@ -79,7 +79,7 @@ collect ─▶ re-anchor ─▶ verify ─▶ plan ─▶ [gate 1: approve] ─�
 3. **Verify** — read the hunk, then the file, then the callers or tests the claim depends on.
 4. **Plan** — one JSON document with verdicts, severity, evidence, actions, and draft replies; validated atomically before writing.
 5. **Gate 1** — one `approve` expression covers the batch. `CLARIFY` and `DEFER` are held back, and the script restates what was approved, held, skipped, and un-approved.
-6. **Preflight** — refuse a dirty tree, then apply one item at a time, blocking issues first, with targeted checks per item and the full suite once at the end.
+6. **Preflight** — refuse a dirty tree *after* approval and record the clean check, which `set --status applied` requires; then apply one item at a time, blocking issues first, with targeted checks per item and the full suite once at the end.
 7. **Gate 2** — one preview of every reply and its resolve decision, then one `--post`. Resolving your own threads is a separate flag; closing someone else's needs an audited override.
 
 A plan containing only reply-only verdicts skips Gate 1 and goes directly from plan to the Gate 2 preview and post.

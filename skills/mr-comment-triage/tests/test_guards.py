@@ -95,6 +95,40 @@ class WritePhaseGuardTests(helpers.RepoCase, unittest.TestCase):
         self.assertIn("and 5 more", cap.stderr)
         self.assertNotIn("f25.txt", cap.stderr)
 
+    def test_applied_without_a_clean_preflight_is_refused(self):
+        self.write_state(items=[helpers.make_item(1)])
+        self.approve()
+        before = self.state_path.read_bytes()
+
+        cap = self.run_state("set", "--item", "1", "--status", "applied")
+
+        self.assertEqual(cap.code, 1)
+        self.assertIn("#1", cap.stderr)
+        self.assertIn("preflight", cap.stderr)
+        self.assertEqual(self.state_path.read_bytes(), before)
+        self.assertEqual(self.item()["status"], "approved")
+
+    def test_preflight_before_approve_does_not_authorise_apply(self):
+        self.write_state(items=[helpers.make_item(1)])
+        self.assertEqual(self.run_state("preflight").code, 0)
+        self.approve()
+
+        cap = self.run_state("set", "--item", "1", "--status", "applied")
+
+        self.assertEqual(cap.code, 1)
+        self.assertIn("preflight", cap.stderr)
+        self.assertEqual(self.item()["status"], "approved")
+
+    def test_approve_then_clean_preflight_then_applied(self):
+        self.write_state(items=[helpers.make_item(1)])
+        self.approve()
+        self.assertEqual(self.run_state("preflight").code, 0)
+
+        cap = self.run_state("set", "--item", "1", "--status", "applied")
+
+        self.assertEqual(cap.code, 0, cap.stderr)
+        self.assertEqual(self.item()["status"], "applied")
+
     def test_preflight_uses_the_shared_resolver_for_an_ignored_state_dir(self):
         os.environ.pop("MR_TRIAGE_DIR", None)
         directory = self.root / ".tmp" / _common.STATE_DIRNAME

@@ -327,8 +327,8 @@ class StateDirTests(unittest.TestCase):
 
     def test_state_file_is_invisible_to_git(self):
         directory, _ = _common.resolve_state_dir(self.root)
-        path = _common.state_path(directory, "gitlab", "group/api", 2340)
-        _common.save_state(path, {"schemaVersion": 1, "items": []})
+        path = _common.state_path(directory, "group/api", 2340)
+        _common.save_state(path, {"schemaVersion": 2, "items": []})
         untracked = subprocess.run(
             ["git", "ls-files", "--others", "--exclude-standard"],
             cwd=self.root,
@@ -357,13 +357,13 @@ class StateFileTests(unittest.TestCase):
     def test_roundtrip_and_atomic_save(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "state.json"
-            state = {"schemaVersion": 1, "items": [{"n": 1, "verdict": "ACCEPT"}]}
+            state = {"schemaVersion": 2, "items": [{"n": 1, "verdict": "ACCEPT"}]}
             _common.save_state(path, state)
             self.assertEqual(_common.load_state(path), state)
             self.assertFalse((Path(tmp) / "state.json.tmp").exists())
 
     def test_state_path_is_stable_and_slugged(self):
-        path = _common.state_path(Path("/tmp"), "gitlab", "Team/Api", 2340)
+        path = _common.state_path(Path("/tmp"), "Team/Api", 2340)
         self.assertEqual(path.name, "gitlab-team-api-2340.json")
 
     def test_missing_state_raises(self):

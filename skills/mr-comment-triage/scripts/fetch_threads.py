@@ -24,6 +24,8 @@ from _common import (
     SCHEMA_VERSION,
     ScriptError,
     add_event,
+    ensure_item_defaults,
+    load_state,
     now_iso,
     repo_root,
     resolve_state_dir,
@@ -217,7 +219,10 @@ def merge_existing(state: dict, fresh: dict) -> dict:
     if not previous:
         return fresh
 
-    fresh["items"] = sorted(previous.values(), key=lambda item: item["n"])
+    fresh["items"] = sorted(
+        (ensure_item_defaults(item) for item in previous.values()),
+        key=lambda item: item["n"],
+    )
     add_event(fresh, "refetched", f"{len(fresh['threads'])} thread(s) after re-fetch")
 
     old_head = (state.get("target") or {}).get("headSha")
@@ -268,7 +273,6 @@ def main(argv: list[str] | None = None) -> int:
     fetched_at = now_iso()
     state = {
         "schemaVersion": SCHEMA_VERSION,
-        "provider": "gitlab",
         "host": host,
         "repo": repo,
         "target": target,
@@ -286,10 +290,10 @@ def main(argv: list[str] | None = None) -> int:
     }
 
     directory, source = resolve_state_dir(root)
-    path = state_path(directory, "gitlab", repo, target["number"])
+    path = state_path(directory, repo, target["number"])
 
     if path.exists() and not args.reset:
-        state = merge_existing(json.loads(path.read_text(encoding="utf-8")), state)
+        state = merge_existing(load_state(path), state)
 
     if args.stdout:
         json.dump(state, sys.stdout, indent=2, ensure_ascii=False)

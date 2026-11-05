@@ -15,6 +15,7 @@ import subprocess
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import quote
 
 SCHEMA_VERSION = 2
 STATE_DIRNAME = "mr-comment-triage"
@@ -94,12 +95,13 @@ def render_command(cmd) -> str:
 
 
 def now_iso() -> str:
-    return (
-        datetime.now(timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
+    """UTC timestamp with microsecond precision.
+
+    Microseconds keep ordering observable: the preflight guard compares a
+    `preflight-clean` event with the item's `approvedAt`, and a second-precision
+    clock could make a check taken *before* approval look simultaneous.
+    """
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def run(cmd, *, cwd=None, check=True, env=None):
@@ -222,6 +224,16 @@ def slug(text: str) -> str:
 
 def state_path(directory: Path, repo: str, number: int) -> Path:
     return directory / f"gitlab-{slug(repo)}-{number}.json"
+
+
+def gitlab_project_base(repo: str) -> str:
+    """The REST path for one project; the project path is URL-encoded."""
+    return f"projects/{quote(repo, safe='')}"
+
+
+def gitlab_mr_endpoint(repo: str, number: int) -> str:
+    """The REST path for one merge request on ``repo``."""
+    return f"{gitlab_project_base(repo)}/merge_requests/{number}"
 
 
 def resolve_state_file(explicit: str | None, *, must_exist: bool = True) -> Path | None:
@@ -367,6 +379,23 @@ def find_item(state: dict, number: int) -> dict:
     )
 
 
+def side_suffix(anchor: dict) -> str:
+    """Show which diff side a line anchor refers to (`old` for deletions)."""
+    side = anchor.get("side")
+    return f" ({side})" if side else ""
+
+
+def anchor_label(thread: dict) -> str:
+    """Where a thread is anchored, in the one shape every command shows."""
+    anchor = thread.get("anchor") or {}
+    kind = anchor.get("kind")
+    if kind == "inline" and anchor.get("path"):
+        return f"{anchor['path']}:{anchor.get('line')}{side_suffix(anchor)}"
+    if kind == "file" and anchor.get("path"):
+        return anchor["path"]
+    return "MR-level"
+
+
 EVIDENCE_PATTERN = re.compile(
     r"^(?P<path>[^:]+):(?P<line>\d+)(?::(?P<note>.*))?$"
 )
@@ -429,6 +458,14 @@ def verify_evidence(entries, root: Path) -> list[dict]:
         )
 
     root_path = Path(root).resolve()
+    head = run(["git", "rev-parse", "--verify", "--quiet", "HEAD"], cwd=root_path, check=False)
+    if head.returncode != 0:
+        raise ScriptError(
+            f"Evidence is checked against HEAD, but {root_path} is not a git "
+            "repository with a commit. Run the plan and approval from the checkout "
+            "being reviewed."
+        )
+
     verified = []
     for entry in entries:
         parsed = normalize_evidence_entry(entry)
@@ -437,21 +474,34 @@ def verify_evidence(entries, root: Path) -> list[dict]:
             raise ScriptError(
                 f"Evidence path {parsed['path']!r} must be relative to the repository root."
             )
-        target = (root_path / relative).resolve()
-        try:
-            target.relative_to(root_path)
-        except ValueError:
+        if ".." in relative.parts:
             raise ScriptError(
                 f"Evidence path {parsed['path']!r} is outside the repository at {root_path}."
-            ) from None
-        if not target.exists():
+            )
+        head_path = relative.as_posix()
+
+        kind = run(
+            ["git", "cat-file", "-t", f"HEAD:{head_path}"],
+            cwd=root_path,
+            check=False,
+        )
+        if kind.returncode != 0:
             raise ScriptError(
                 f"Evidence path {parsed['path']!r} does not exist at HEAD in {root_path}."
             )
-        if not target.is_file():
+        if kind.stdout.strip() != "blob":
             raise ScriptError(f"Evidence path {parsed['path']!r} is not a file.")
-        text = target.read_text(encoding="utf-8", errors="replace")
-        line_count = len(text.splitlines())
+
+        blob = run(
+            ["git", "show", f"HEAD:{head_path}"],
+            cwd=root_path,
+            check=False,
+        )
+        if blob.returncode != 0:
+            raise ScriptError(
+                f"Evidence path {parsed['path']!r} does not exist at HEAD in {root_path}."
+            )
+        line_count = len(blob.stdout.splitlines())
         if parsed["line"] > line_count:
             raise ScriptError(
                 f"Evidence {parsed['path']}:{parsed['line']} is past the end of "

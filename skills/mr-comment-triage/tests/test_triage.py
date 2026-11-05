@@ -338,19 +338,41 @@ class StateDirTests(unittest.TestCase):
         self.assertNotIn(path.name, untracked.stdout)
         self.assertTrue(path.exists())
 
-    def test_env_override_wins(self):
-        target = self.root / "elsewhere"
+    @contextlib.contextmanager
+    def _override(self, target):
         original = _common.os.environ.get("MR_TRIAGE_DIR")
         _common.os.environ["MR_TRIAGE_DIR"] = str(target)
         try:
-            directory, source = _common.resolve_state_dir(self.root)
+            yield
         finally:
             if original is None:
                 _common.os.environ.pop("MR_TRIAGE_DIR", None)
             else:
                 _common.os.environ["MR_TRIAGE_DIR"] = original
+
+    def test_env_override_outside_repo_wins(self):
+        with tempfile.TemporaryDirectory() as outside:
+            target = Path(outside) / "elsewhere"
+            with self._override(target):
+                directory, source = _common.resolve_state_dir(self.root)
+            self.assertEqual(directory, target)
+            self.assertEqual(source, "MR_TRIAGE_DIR")
+
+    def test_env_override_inside_repo_is_refused(self):
+        target = self.root / "elsewhere"
+        with self._override(target):
+            with self.assertRaises(_common.ScriptError) as caught:
+                _common.resolve_state_dir(self.root)
+        self.assertIn(str(target), str(caught.exception))
+        self.assertFalse(target.exists())
+
+    def test_env_override_gitignored_inside_repo_is_accepted(self):
+        target = self.root / "scratch" / "state"
+        with self._override(target):
+            directory, source = _common.resolve_state_dir(self.root)
         self.assertEqual(directory, target)
         self.assertEqual(source, "MR_TRIAGE_DIR")
+        self.assertTrue(directory.is_dir())
 
 
 class StateFileTests(unittest.TestCase):

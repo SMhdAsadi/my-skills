@@ -53,6 +53,46 @@ class ScriptError(RuntimeError):
     """A failure worth showing the user verbatim, with one actionable next step."""
 
 
+REDACTED = "***"
+# A reply body is a whole argument, so everything after `body=` is hidden.
+_BODY_INLINE = re.compile(r"(?i)\b(body=).*$", re.MULTILINE)
+# Credentials and queries live in URLs, where `&` ends the value.
+_SENSITIVE_INLINE = re.compile(r"(?i)\b(private_token|token|query)=([^&\n]*)")
+
+
+def redact_text(text: str) -> str:
+    """Mask credential and reply-content values inside free-form diagnostics."""
+    text = _BODY_INLINE.sub(rf"\1{REDACTED}", text or "")
+    return _SENSITIVE_INLINE.sub(rf"\1={REDACTED}", text)
+
+
+def render_command(cmd) -> str:
+    """Render a command for an error while hiding bodies and tokens.
+
+    The tool, subcommand, host and endpoint stay visible so authentication and
+    routing failures remain diagnosable.
+    """
+    parts = [str(part) for part in cmd]
+    rendered: list[str] = []
+    index = 0
+    while index < len(parts):
+        part = parts[index]
+        if part == "--body":
+            rendered.append(part)
+            index += 1
+            if index < len(parts):
+                rendered.append(REDACTED)
+                index += 1
+            continue
+        if part == "-f" and index + 2 < len(parts) and parts[index + 1] == "body":
+            rendered.extend([part, parts[index + 1], REDACTED])
+            index += 3
+            continue
+        rendered.append(redact_text(part))
+        index += 1
+    return " ".join(rendered)
+
+
 def now_iso() -> str:
     return (
         datetime.now(timezone.utc)
@@ -63,7 +103,7 @@ def now_iso() -> str:
 
 
 def run(cmd, *, cwd=None, check=True, env=None):
-    """Run a command, raising ScriptError with the first lines of stderr on failure."""
+    """Run a command; on failure report the redacted command and stderr tail."""
     merged_env = None
     if env:
         merged_env = {**os.environ, **env}
@@ -78,13 +118,18 @@ def run(cmd, *, cwd=None, check=True, env=None):
         )
     except FileNotFoundError as exc:
         raise ScriptError(
-            f"`{cmd[0]}` is not installed or not on PATH. Install it or pass a "
-            "pasted thread dump instead."
+            f"`{cmd[0]}` is not installed or not on PATH. Install it and re-run."
         ) from exc
     if check and proc.returncode != 0:
-        detail = (proc.stderr or proc.stdout or "").strip().splitlines()[:6]
-        label = " ".join(cmd[:2])
-        raise ScriptError(f"`{label}` failed:\n" + "\n".join(detail))
+        detail = redact_text((proc.stderr or proc.stdout or "").strip())
+        lines = detail.splitlines()[:6]
+        label = " ".join(str(part) for part in cmd[:2])
+        message = [
+            f"`{label}` failed with exit code {proc.returncode}.",
+            f"command: {render_command(cmd)}",
+            *lines,
+        ]
+        raise ScriptError("\n".join(message))
     return proc
 
 
@@ -100,6 +145,39 @@ def is_gitignored(root: Path, relpath: str) -> bool:
     return proc.returncode == 0
 
 
+def _nearest_existing(path: Path) -> Path:
+    probe = path
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
+    return probe
+
+
+def _guard_override(target: Path) -> None:
+    """Refuse an override that would write triage state into a tracked path.
+
+    The override is checked against whichever repository contains it, not the
+    caller's repository, so an override elsewhere on disk is unaffected.
+    """
+    resolved = target.resolve()
+    probe = _nearest_existing(resolved)
+    if not probe.is_dir():
+        probe = probe.parent
+    repo = repo_root(probe)
+    if repo is None:
+        return
+    try:
+        relative = resolved.relative_to(repo)
+    except ValueError:
+        return
+    if relative != Path(".") and is_gitignored(repo, str(relative)):
+        return
+    raise ScriptError(
+        f"MR_TRIAGE_DIR={target} is inside the git repository at {repo} but is not "
+        "gitignored, so triage state (including comment bodies) would be tracked. "
+        "Choose a path outside the repository or add it to .gitignore."
+    )
+
+
 def resolve_state_dir(root: Path | None = None) -> tuple[Path, str]:
     """Pick where the state file lives.
 
@@ -112,6 +190,9 @@ def resolve_state_dir(root: Path | None = None) -> tuple[Path, str]:
     override = os.environ.get("MR_TRIAGE_DIR")
     if override:
         target = Path(override).expanduser()
+        if not target.is_absolute():
+            target = Path.cwd() / target
+        _guard_override(target)
         target.mkdir(parents=True, exist_ok=True)
         return target, "MR_TRIAGE_DIR"
 
@@ -284,3 +365,98 @@ def find_item(state: dict, number: int) -> dict:
         f"Item #{number} does not exist. Triaged items: "
         f"{[i.get('n') for i in state.get('items', [])] or 'none'}"
     )
+
+
+EVIDENCE_PATTERN = re.compile(
+    r"^(?P<path>[^:]+):(?P<line>\d+)(?::(?P<note>.*))?$"
+)
+
+
+def normalize_evidence_entry(entry) -> dict:
+    """Turn a `path:line[:note]` string or a `{path, line, note}` object into a dict."""
+    if isinstance(entry, str):
+        match = EVIDENCE_PATTERN.match(entry.strip())
+        if not match:
+            raise ScriptError(
+                f"Evidence entry {entry!r} is not 'path:line' or 'path:line:note'."
+            )
+        path = match.group("path").strip()
+        if not path:
+            raise ScriptError("Evidence entry needs a non-empty path before ':line'.")
+        line = int(match.group("line"))
+        if line < 1:
+            raise ScriptError(
+                f"Evidence for {path!r} needs a positive integer 'line', got {line}."
+            )
+        return {
+            "path": path,
+            "line": line,
+            "note": (match.group("note") or "").strip(),
+        }
+    if isinstance(entry, dict):
+        path = entry.get("path")
+        line = entry.get("line")
+        note = entry.get("note")
+        if not isinstance(path, str) or not path.strip():
+            raise ScriptError("Evidence object needs a non-empty 'path'.")
+        if type(line) is not int or line < 1:
+            raise ScriptError(
+                f"Evidence for {path.strip()!r} needs a positive integer 'line'."
+            )
+        if note is not None and not isinstance(note, str):
+            raise ScriptError(f"Evidence note for {path.strip()!r} must be a string.")
+        return {"path": path.strip(), "line": line, "note": (note or "").strip()}
+    raise ScriptError(
+        "Each evidence entry must be a 'path:line[:note]' string or a "
+        "{path, line, note} object."
+    )
+
+
+def verify_evidence(entries, root: Path) -> list[dict]:
+    """Normalize evidence and prove every citation exists at HEAD in ``root``.
+
+    Returns the normalized ``[{path, line, note}]`` list so callers can persist
+    exactly what they verified.
+    """
+    if entries is None:
+        raise ScriptError(
+            "Evidence is required; pass an empty list when there is no line to cite."
+        )
+    if not isinstance(entries, list):
+        raise ScriptError(
+            "Evidence must be a list of 'path:line[:note]' strings or "
+            "{path, line, note} objects."
+        )
+
+    root_path = Path(root).resolve()
+    verified = []
+    for entry in entries:
+        parsed = normalize_evidence_entry(entry)
+        relative = Path(parsed["path"])
+        if relative.is_absolute():
+            raise ScriptError(
+                f"Evidence path {parsed['path']!r} must be relative to the repository root."
+            )
+        target = (root_path / relative).resolve()
+        try:
+            target.relative_to(root_path)
+        except ValueError:
+            raise ScriptError(
+                f"Evidence path {parsed['path']!r} is outside the repository at {root_path}."
+            ) from None
+        if not target.exists():
+            raise ScriptError(
+                f"Evidence path {parsed['path']!r} does not exist at HEAD in {root_path}."
+            )
+        if not target.is_file():
+            raise ScriptError(f"Evidence path {parsed['path']!r} is not a file.")
+        text = target.read_text(encoding="utf-8", errors="replace")
+        line_count = len(text.splitlines())
+        if parsed["line"] > line_count:
+            raise ScriptError(
+                f"Evidence {parsed['path']}:{parsed['line']} is past the end of "
+                f"{parsed['path']} ({line_count} lines at HEAD)."
+            )
+        verified.append(parsed)
+    return verified
+

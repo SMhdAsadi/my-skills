@@ -1,4 +1,4 @@
-# MR / PR Comment Triage (`mr-comment-triage`)
+# MR Comment Triage (`mr-comment-triage`)
 
 [![Agent Skills Standard](https://img.shields.io/badge/Agent%20Skills-Standard-0A84FF?style=flat-square)](https://agentskills.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](../../LICENSE)
@@ -29,7 +29,7 @@ Nothing mutates before approval. Replies stay drafts until you explicitly post t
 - **Comments are hypotheses** — each claim is verified against the current tree before a verdict is formed, with `path:line` evidence rather than agreement.
 - **Six verdicts, not two** — separates "right concern, wrong fix" (`ALTERNATIVE`) from "wrong premise" (`PUSH_BACK`), and gives out-of-scope and needs-a-decision their own lanes (`DEFER`, `CLARIFY`) instead of smuggling them into the diff.
 - **One batch gate** — approve `all`, `1, 3`, `skip 2`, or `2=ACCEPT`. `all` never includes items that need a human decision.
-- **Provider-normalized** — GitHub via GraphQL `reviewThreads`, GitLab via the discussions REST API, including self-hosted instances. System notes, MR-level threads, deleted-line anchors, and outdated comments are handled once, centrally.
+- **GitLab-native** — discussions come from the GitLab REST API, including self-hosted instances. System notes, MR-level threads, deleted-line anchors, and outdated comments are handled once, centrally.
 - **Staleness-aware** — a comment written against an older diff version is flagged, then re-anchored at HEAD instead of being judged against a line that no longer exists.
 - **Duplicate collapsing** — three reviewers raising one issue is one item with three thread ids, not three approvals for the same edit.
 - **Bots judged by content** — a bot comment that encodes a checkable claim is triaged like any other; a status ping is not.
@@ -42,7 +42,7 @@ Nothing mutates before approval. Replies stay drafts until you explicitly post t
 ## How to Trigger
 
 - *"Handle the review comments on this MR"*
-- *"Triage the PR feedback and tell me which ones you'd push back on"*
+- *"Triage the MR feedback and tell me which ones you'd push back on"*
 - *"Work through the open threads on !2340"*
 - *"Which of these review comments are actually valid?"*
 
@@ -70,7 +70,7 @@ collect ──▶ re-anchor ──▶ verify ──▶ propose ──▶ [gate 1
  read-only                                    approval              writes        post
 ```
 
-1. **Collect** — unresolved threads from GitHub or GitLab, normalized into one model.
+1. **Collect** — unresolved threads from GitLab, normalized into one model.
 2. **Re-anchor** — inline, file-level, and MR-level comments are distinguished; stale anchors are re-resolved at HEAD.
 3. **Verify** — read the hunk, then the file, then the callers or tests the claim depends on.
 4. **Propose** — verdicts plus severity, written to the state file and rendered as a table.
@@ -89,7 +89,7 @@ Resolution order, first match wins:
 3. `.tmp/mr-comment-triage/`, created only if git already ignores `.tmp/`
 4. `$TMPDIR/mr-comment-triage/`
 
-It is never written to a tracked path. The filename is stable per target (`github-cli-cli-14783.json`), so re-fetching resumes the existing plan instead of starting over. If HEAD moved between fetches, the state records it and warns that verdicts need re-verification.
+It is never written to a tracked path. The filename is stable per target (`gitlab-group-api-2340.json`), so re-fetching resumes the existing plan instead of starting over. If HEAD moved between fetches, the state records it and warns that verdicts need re-verification.
 
 Schema and lifecycle: [`references/thread-model.md`](references/thread-model.md).
 
@@ -100,11 +100,10 @@ Schema and lifecycle: [`references/thread-model.md`](references/thread-model.md)
 | Tool | Version | Needed for |
 |---|---|---|
 | `git` | 2.0+ | Everything |
-| `gh` | 2.40+ | GitHub PRs |
-| `glab` | 1.40+ | GitLab MRs, including self-hosted |
+| `glab` | 1.40+ | MR collection and replies, including self-hosted GitLab |
 | Python | 3.10+ | The three helper scripts (stdlib only) |
 
-No `gh`/`glab`? The skill degrades to a pasted thread dump and still runs the verification and planning phases.
+No `glab`? Install and authenticate it first; thread collection has no other transport.
 
 ---
 

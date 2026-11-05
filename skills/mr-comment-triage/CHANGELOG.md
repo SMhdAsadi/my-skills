@@ -7,6 +7,54 @@ Each release is tagged `mr-comment-triage-v<version>` and published on the [Rele
 
 ---
 
+## [2.0.0] - 2026-11-05
+
+### Added
+
+- **Batch plan ingestion:** `triage_state.py plan --from PLAN.json` accepts the whole item list as a JSON array or `{"items": [...]}` and validates every item — known and unique thread ids, verdict/severity enums, `path:line` evidence at HEAD, action for code verdicts, reply draft for reply-only verdicts — before one atomic write. `--dry-run` renders without saving. A bad item leaves the state file byte-identical.
+- **Enforced state machine:** `approve` is the only writer of `approved`; the execute phase owns `applied`/`verified`; the reply phase owns `posted`/`resolved`. `set --status` refuses the states it does not own and names the command that does.
+- **Approval evidence:** each approval records `approvedAt` and an `approvalHash` over the material intent (`verdict`, `threadIds`, `action`, `evidence`). A material edit invalidates the approval, returns the item to `proposed`, and appends an `approval-invalidated` event.
+- **Reply-only fast path:** a plan with no code verdicts can skip Gate 1 and go straight to the batch reply preview and post. A plan that still contains an unapproved code item is refused instead of silently mixing it in.
+- **Batched Gate 2:** `post_reply.py --all-approved` previews every eligible item, thread, body, and resolve decision in one output; one `--post` sends the batch. The item's stored `replyDraft` is the default body, and `--body`/`--body-file` overrides are recorded with `source: override`.
+- **Per-thread journal:** each post records its exact body, timestamp, URL, resolution time, and source, and is saved before the next external call. A partial failure reports succeeded, failed, and unattempted threads and resumes without double-posting. Item status is derived from the journal; a duplicate group finishes only when every thread is recorded.
+- **Re-fetch reconciliation:** re-fetching replaces `threads`, keeps `items`, appends events instead of replacing them, records a `head-moved` event and warning, and marks items whose threads vanished as `orphaned` with `missingThreadIds`, an `orphaned` event, and a warning. A returning thread clears the orphan state.
+- **`preflight`:** refuses a dirty working tree before the execute phase with the offending paths, and records a clean result as a `preflight-clean` event.
+- **Resolve guard:** `--resolve` closes only `authorKind: self` threads. `--resolve-other` is required for anyone else, is only valid with `--resolve`, and appends a `resolve-override` event naming the thread and author.
+- **Anchor completeness:** anchors keep `oldPath` for renames and deleted files, derive `side` from `new_line`/`old_line`/`line_range` (new side wins a mixed range), and never leave an inline anchor with a null side.
+- **`MR_TRIAGE_DIR` guard:** an override inside a repository is accepted only when it passes `git check-ignore`; otherwise the command refuses it and names the path and repository.
+- **Test suite:** 237 stdlib `unittest` cases covering the state machine, gates, batch plan and reply paths, partial failure, anchors, re-fetch/orphans, safety guards, and the GitLab-only contract. No network, credentials, or CI workflow.
+
+### Changed
+
+- **GitLab only:** `glab` and `git` are the only forge dependencies; `glab` is required and there is no second transport. Compatibility metadata is now `glab >= 1.40; git >= 2.0`.
+- **State schema v2:** the file is `gitlab-<repo-slug>-<number>.json`, carries `host`, `repo`, and a typed `target`, and `load_state` rejects any other schema version with instructions to re-fetch. There is no migration.
+- **Two batched gates, constant invocation count:** a normal run is six calls — `fetch`, `plan --from`, `render`, `approve`, `post_reply.py --all-approved` preview, and `post_reply.py --all-approved --post` — regardless of thread count.
+- **Evidence at HEAD:** `plan --from` checks every citation exists and the line is in range, and `approve` re-checks before approving.
+- **Output:** plan and reply previews state item counts, thread counts, bodies, resolve decisions, held/skipped/unapproved items, and orphan warnings instead of leaving them implicit.
+- **Error reporting:** a failing command is shown in full with reply bodies, `private_token`, `token`, and `query` values redacted, keeping the tool, subcommand, host, and endpoint diagnosable.
+
+### Removed
+
+- **The alternate forge provider:** its query layer, REST wrapper, normalizer, reply/resolve mutations, host-based provider detection, provider flag, fixtures, and every related document and recipe are removed. GitLab is the only forge left.
+- **The undocumented bypass flag:** there is no force switch on any gate. The only override is the audited `--resolve-other`.
+- **The thread-dump fallback:** `glab` is a hard requirement; there is no ingestion path for manually supplied comments.
+- **The fixed ten-thread budget:** no silent truncation and no fixed cap. The documented guidance is to ask before planning an oversized batch.
+- **Item-level posting fields and the `rejected` status:** replaced by per-thread `posts` and the derived status enum.
+
+### Fixed
+
+- **Gate 1 was a convention:** `set --status applied` and the bypass flag could make an unapproved item executable. Both paths are gone.
+- **Approval drift:** changing the verdict, threads, action, or evidence after approval now invalidates the approval instead of authorizing a different action.
+- **Partial batch corruption:** a successful reply is journaled before the next call, so a later failure cannot erase it or cause a re-post.
+- **Duplicate thread ids:** ids are deduped at ingestion, and posting one thread no longer marks a whole item complete.
+- **O(N) workflow:** one `plan --from` and one batched reply replace the per-item command loop.
+- **State escaping the scratch directory:** an unignored override inside a repo is refused.
+- **Destructive re-fetch:** events are appended, vanished threads are reconciled, and history survives.
+- **Unprovable posts:** the state now records the exact posted body and its source.
+- **Documentation that promised nonexistent behavior:** the thread-dump path, the fixed ten-thread budget, the alternate provider, the old state filename, and stale test counts are gone from the Skill, README, references, and repository catalog.
+
+---
+
 ## [1.1.0] - 2026-11-04
 
 ### Changed
@@ -30,7 +78,7 @@ Each release is tagged `mr-comment-triage-v<version>` and published on the [Rele
 - **`scripts/triage_state.py`:** state inspection and mutation, with a deterministic approval parser (`all`, `1, 3`, `skip 2`, `2=ACCEPT`). `approve` replaces the previous plan and reports what it un-approved. Rejects unknown thread ids instead of dropping them.
 - **`scripts/post_reply.py`:** GitLab reply and resolve, preview-only unless `--post` is passed. Refuses unapproved items, empty bodies, and double-posting. Resolving requires `--post --resolve` as a separate decision.
 - **`scripts/_common.py`:** gitignored-directory state resolution (`$MR_TRIAGE_DIR` → existing ignored scratch dir → creatable `.tmp/` → system temp), atomic writes, and stable per-target filenames.
-- **Persistent state file (`mr-triage.json`):** single source of truth for threads, verdicts, statuses, and an append-only event log. Never written to a tracked path.
+- **Persistent, per-target state file:** single source of truth for threads, verdicts, statuses, and an append-only event log. Never written to a tracked path.
 - **`references/thread-model.md`:** schema, anchor kinds (`inline` / `file` / `mr`), staleness rules, and the item status lifecycle.
 - **`references/fetch-recipes.md`:** the underlying REST commands, GitLab traps, and a troubleshooting table.
 - **Test suite:** stdlib `unittest` cases covering remote parsing, the GitLab normalizer, approval parsing, state directory resolution, and atomic saves. No network or credentials required.

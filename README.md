@@ -34,7 +34,7 @@ You're staring at a branch with fourteen changed files and no obvious place to s
 
 ### [MR comment triage](skills/mr-comment-triage/)
 
-Nine review comments, and at least two of them contradict each other. This fetches every open thread on a GitHub PR or GitLab MR — self-hosted GitLab included — checks each claim against the real code, and sorts them: accept this, push back on that, this one needs a decision you haven't made yet. You see the whole plan at once and approve it item by item. Nothing is edited, committed, or replied to before that, and replies stay drafts until you explicitly post them.
+Nine review comments, and at least two of them contradict each other. This fetches every open thread on a GitLab MR — self-hosted GitLab included — checks each claim against the real code, and sorts them: accept this, push back on that, this one needs a decision you haven't made yet. You see the whole plan at once and approve it in one batch. Nothing is edited, committed, or replied to before that; replies are previewed as one batch and stay drafts until you explicitly post them.
 
 > *"Triage the review comments on this MR."*
 

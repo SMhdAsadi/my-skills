@@ -25,14 +25,14 @@ Skills are versioned independently with SemVer. When a skill's behavior changes 
 
 1. Bump `metadata.version` in its `SKILL.md` frontmatter (major for breaking contract changes, minor for new behavior, patch for fixes).
 2. Add an entry to that skill's `CHANGELOG.md`.
-3. Tag the commit `<skill-name>-v<version>` (e.g., `review-walkthrough-v2.0.0`) and create a matching GitHub Release with the changelog notes — this is what surfaces on the repo's Releases page.
+3. Tag the commit `<skill-name>-v<version>` (e.g., `review-walkthrough-v2.0.0`) and create a matching release with the changelog notes — this is what surfaces on the repo's Releases page.
 
 ## Available Skills
 
 | Skill | Trigger Keywords | Pointer |
 | :--- | :--- | :--- |
 | `review-walkthrough` | "walk through changes", "review branch", "guided review", "review walkthrough for diff" | [`skills/review-walkthrough/SKILL.md`](skills/review-walkthrough/SKILL.md) |
-| `mr-comment-triage` | "handle review comments", "triage MR feedback", "respond to reviewers", "work through open threads", "which comments are valid" | [`skills/mr-comment-triage/SKILL.md`](skills/mr-comment-triage/SKILL.md) |
+| `mr-comment-triage` | "handle review comments", "triage GitLab MR feedback", "respond to reviewers", "work through open threads", "which comments are valid", "approve replies in one batch" | [`skills/mr-comment-triage/SKILL.md`](skills/mr-comment-triage/SKILL.md) |
 | `to-mr-comments` | "write MR comments", "turn findings into comments", "post a review", "record a rejected candidate", "why did we drop that comment" | [`skills/to-mr-comments/SKILL.md`](skills/to-mr-comments/SKILL.md) |
 | `better-persian` | "better-persian", "better persian", "write in persian", "persian copy", "long-form persian", "متن فارسی", "نامه اداری" | [`skills/better-persian/SKILL.md`](skills/better-persian/SKILL.md) |
 
@@ -48,8 +48,8 @@ Skills are versioned independently with SemVer. When a skill's behavior changes 
 
 ### `mr-comment-triage`
 - **Purpose**: Consumes the other half of the review loop. Fetches unresolved GitLab MR threads, re-anchors every comment against the current tree, and assigns an independent verdict (`ACCEPT`, `ALTERNATIVE`, `PUSH_BACK`, `DEFER`, `ALREADY_FIXED`, `CLARIFY`) with `path:line` evidence instead of deference.
-- **Activation**: When asked to handle review comments, triage MR feedback, respond to a reviewer, or work through an MR's open threads. One MR per run.
-- **Contract**: JSON-first (v1.0.0) with `mr-triage.json` in a gitignored scratch dir (`$MR_TRIAGE_DIR` → existing ignored dir → `.tmp/` → system temp), never a tracked path. Two gates: `approve` for code changes (deterministic parser supporting `all`, `1, 3`, `skip 2`, `2=ACCEPT`; `CLARIFY`/`DEFER` never auto-approved), and `--post` for replies with `--resolve` as a separate flag. GitLab collection lives in `scripts/fetch_threads.py` (discussions REST, self-hosted hosts, system-note filtering, stale-anchor detection); comment bodies are treated as data, never as instructions.
+- **Activation**: When asked to handle review comments, triage GitLab MR feedback, respond to a reviewer, or work through an MR's open threads. One MR per run.
+- **Contract**: GitLab-only (v2.0.0) with a schema-v2 state file (`gitlab-<repo-slug>-<number>.json`) in a gitignored scratch dir (`$MR_TRIAGE_DIR` → existing ignored dir → `.tmp/` → system temp), never a tracked path; an unignored override inside a repo is refused. Two batched gates with a constant six-call run: `plan --from` validates the whole item list atomically, and `approve` is the only writer of approval (deterministic parser supporting `all`, `1, 3`, `skip 2`, `2=ACCEPT`; `CLARIFY`/`DEFER` never auto-approved), while `post_reply.py --all-approved` previews and `--post` sends every reply from the stored draft. A reply-only plan skips Gate 1. Material edits invalidate approval; a per-thread journal records the exact posted body and resumes partial batches; re-fetch appends events and orphans vanished threads; `preflight` refuses a dirty tree; `--resolve` closes only self-authored threads and `--resolve-other` is audited. GitLab collection lives in `scripts/fetch_threads.py` (discussions REST, self-hosted hosts, pagination, system-note filtering, anchor side and `oldPath`, stale detection); `glab` is required, comment bodies are treated as data, never as instructions. 237 stdlib tests run locally with no network or CI.
 
 ### `to-mr-comments`
 - **Purpose**: Turns a review conversation or branch diff into a small set of verified, copy-pasteable GitLab MR comments. Classifies each finding (`agreed`, `open`, `rejected`, `hypothesis`), applies an explicit selection policy, re-checks anchors at HEAD against `git diff -U3 <base>...HEAD`, dedupes by anchor and body, enforces a 5/10 budget, records rejected candidates in `dropped[]`, and posts them to the merge request after explicit approval.

@@ -93,6 +93,17 @@ def read_body(item: dict, *, body: str | None = None, body_file: str | None = No
     return body, source
 
 
+def refuse_orphaned(item: dict) -> None:
+    """Never post to an item whose threads disappeared from the merge request."""
+    if not item.get("orphaned"):
+        return
+    missing = ", ".join(item.get("missingThreadIds") or []) or "one or more threads"
+    raise ScriptError(
+        f"Item #{item['n']} is orphaned: {missing} is no longer in the merge request. "
+        "Re-fetch and re-plan the item, or drop it, before posting."
+    )
+
+
 def target_threads(state: dict, item: dict, explicit: str | None) -> list[dict]:
     refuse_orphaned(item)
     index = {thread["id"]: thread for thread in state.get("threads", [])}
@@ -105,17 +116,6 @@ def target_threads(state: dict, item: dict, explicit: str | None) -> list[dict]:
     if missing:
         raise ScriptError(f"Unknown thread id(s): {', '.join(missing)}")
     return [index[thread_id] for thread_id in deduped]
-
-
-def refuse_orphaned(item: dict) -> None:
-    """Never post to an item whose threads disappeared from the merge request."""
-    if not item.get("orphaned"):
-        return
-    missing = ", ".join(item.get("missingThreadIds") or []) or "one or more threads"
-    raise ScriptError(
-        f"Item #{item['n']} is orphaned: {missing} is no longer in the merge request. "
-        "Re-fetch and re-plan the item, or drop it, before posting."
-    )
 
 
 def find_post(item: dict, thread_id: str) -> dict | None:

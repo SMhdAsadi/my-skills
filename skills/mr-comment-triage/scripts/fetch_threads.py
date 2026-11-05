@@ -77,12 +77,84 @@ def classify_author(login: str | None, self_login: str | None = None) -> str:
     return "human"
 
 
-def _anchor(path: str | None, line: int | None, end_line: int | None, side: str) -> dict:
+def _anchor(
+    path: str | None,
+    old_path: str | None,
+    line: int | None,
+    end_line: int | None,
+    side: str | None,
+) -> dict:
+    """Build one anchor; ``oldPath`` survives a rename but never repeats ``path``."""
+    old_path = old_path if old_path and old_path != path else None
     if not path:
-        return {"kind": "mr", "path": None, "line": None, "endLine": None, "side": None}
-    if not line:
-        return {"kind": "file", "path": path, "line": None, "endLine": None, "side": None}
-    return {"kind": "inline", "path": path, "line": line, "endLine": end_line, "side": side}
+        return {
+            "kind": "mr",
+            "path": None,
+            "oldPath": None,
+            "line": None,
+            "endLine": None,
+            "side": None,
+        }
+    if line is None:
+        return {
+            "kind": "file",
+            "path": path,
+            "oldPath": old_path,
+            "line": None,
+            "endLine": None,
+            "side": None,
+        }
+    return {
+        "kind": "inline",
+        "path": path,
+        "oldPath": old_path,
+        "line": line,
+        "endLine": end_line,
+        # An inline anchor always has a side: an unresolved side is the new side.
+        "side": side or "new",
+    }
+
+
+def _range_values(position: dict, side: str) -> list[int]:
+    """Lines of one side declared by ``line_range.start``/``end``."""
+    line_range = position.get("line_range") or {}
+    key = f"{side}_line"
+    parts = (line_range.get("start") or {}, line_range.get("end") or {})
+    return [part[key] for part in parts if part.get(key) is not None]
+
+
+def _anchor_side(position: dict) -> str | None:
+    """Derive the diff side, preferring the new side for a mixed range.
+
+    ``new_line`` marks a post-change anchor and ``old_line`` a deletion. When
+    both are absent the side comes from ``line_range``: non-null ``new_line``
+    values win over ``old_line`` values, so a range that mentions both sides is
+    read against the new file.
+    """
+    if position.get("new_line") is not None:
+        return "new"
+    if position.get("old_line") is not None:
+        return "old"
+    if _range_values(position, "new"):
+        return "new"
+    if _range_values(position, "old"):
+        return "old"
+    return None
+
+
+def _anchor_range(position: dict) -> tuple[int | None, int | None, str | None]:
+    """Return (line, endLine, side) for a position, range or single-line."""
+    side = _anchor_side(position)
+    if side is None:
+        return None, None, None
+    values = _range_values(position, side)
+    if not values:
+        single = position.get(f"{side}_line")
+        values = [single] if single is not None else []
+    if not values:
+        return None, None, side
+    line, end_line = min(values), max(values)
+    return line, (end_line if end_line != line else None), side
 
 
 def normalize_gitlab_discussion(
@@ -101,22 +173,10 @@ def normalize_gitlab_discussion(
         return None
 
     position = root.get("position") or {}
+    # A deleted file has no new path; its only surviving path is the old one.
     path = position.get("new_path") or position.get("old_path")
-    new_line = position.get("new_line")
-    old_line = position.get("old_line")
-    line_range = position.get("line_range") or {}
-    range_end = line_range.get("end") or {}
-    range_start = line_range.get("start") or {}
-
-    line = new_line or old_line or range_end.get("new_line") or range_end.get("old_line")
-    end_line = None
-    if range_start and range_end:
-        first_line = range_start.get("new_line") or range_start.get("old_line")
-        last_line = range_end.get("new_line") or range_end.get("old_line")
-        if first_line and last_line and last_line > first_line:
-            line, end_line = first_line, last_line
-
-    side = "new" if new_line else ("old" if old_line else None)
+    old_path = position.get("old_path")
+    line, end_line, side = _anchor_range(position)
     note_sha = position.get("head_sha")
     author = root.get("author") or {}
     login = author.get("username")
@@ -124,7 +184,7 @@ def normalize_gitlab_discussion(
     return {
         "id": f"gl:{discussion['id']}",
         "remoteId": discussion["id"],
-        "anchor": _anchor(path, line, end_line, side),
+        "anchor": _anchor(path, old_path, line, end_line, side),
         "author": login,
         "authorKind": classify_author(login, self_login),
         "body": root.get("body") or "",

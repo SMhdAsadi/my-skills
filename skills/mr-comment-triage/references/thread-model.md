@@ -36,11 +36,13 @@ A comment's position is not always a line. Three kinds, decided once at fetch ti
 
 | Kind | Meaning | Source (GitLab) |
 |---|---|---|
-| `inline` | `path` + `line` | `position.new_path` or `old_path`, plus `new_line` or `old_line` |
-| `file` | `path`, no line | `position.new_path` or `old_path` set, both lines null |
+| `inline` | `path` + `line` | `position.new_path` or `old_path`, plus a line or `line_range` |
+| `file` | `path`, no line | `position.new_path` or `old_path` set, all lines null |
 | `mr` | no position at all | `position` null (`DiscussionNote`) |
 
-`side` is `new` when the anchor sits on the post-change side (`new_line` present) and `old` for deletions. A deleted-line comment must be read against the old file, not the new one.
+`path` is `new_path` when it exists, otherwise `old_path`, so a deleted file anchors at its old path. `oldPath` keeps the pre-rename path for renames and payload construction; it is `null` when the path did not change or there is no `old_path`.
+
+`side` is `new` for the post-change side and `old` for deletions (`new_line` → `new`, else `old_line` → `old`). When both are null the side comes from `line_range`: non-null `new_line` values in `start`/`end` win, otherwise the non-null `old_line` values. A mixed range that mentions both sides is therefore read against the new file, deterministically. `line`/`endLine` are the min/max of the chosen side's values, and an inline anchor never has a null `side`. A deleted-line comment must be read against the old file, not the new one.
 
 Multi-line comments carry `endLine`; the range start is the anchor `line`.
 
@@ -81,6 +83,7 @@ A stale thread still gets a verdict. `ALREADY_FIXED` is the common outcome, but 
       "anchor": {
         "kind": "inline",
         "path": "pkg/cmd/release/download/download.go",
+        "oldPath": null,
         "line": 600,
         "endLine": 604,
         "side": "new"

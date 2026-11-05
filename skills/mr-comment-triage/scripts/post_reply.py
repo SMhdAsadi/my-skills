@@ -25,30 +25,13 @@ from _common import (
     find_item,
     load_state,
     now_iso,
-    resolve_state_dir,
+    refresh_item_status,
+    resolve_state_file,
     run,
     save_state,
 )
 
 POSTABLE_STATUSES = {"approved", "applied", "verified"}
-
-
-def resolve_state_file(explicit: str | None) -> Path:
-    if explicit:
-        path = Path(explicit).expanduser()
-        if not path.exists():
-            raise ScriptError(f"No state file at {path}")
-        return path
-    directory, _ = resolve_state_dir()
-    candidates = sorted(
-        path for path in directory.glob("*.json") if not path.name.endswith(".tmp")
-    )
-    if len(candidates) != 1:
-        raise ScriptError(
-            f"Expected exactly one state file in {directory}, found {len(candidates)}. "
-            "Pass --state."
-        )
-    return candidates[0]
 
 
 def read_body(args: argparse.Namespace) -> str:
@@ -116,7 +99,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--body", help="Inline reply text")
     parser.add_argument("--post", action="store_true", help="Actually send the reply")
     parser.add_argument("--resolve", action="store_true", help="Resolve the thread after replying")
-    parser.add_argument("--force", action="store_true", help="Post again even if already posted")
     return parser
 
 
@@ -125,26 +107,20 @@ def main(argv: list[str] | None = None) -> int:
     path = resolve_state_file(args.state)
     state = load_state(path)
     item = find_item(state, args.item)
-    body = read_body(args)
 
+    if item.get("status") not in POSTABLE_STATUSES:
+        raise ScriptError(
+            f"Item #{args.item} is '{item.get('status')}'; posting needs an approved item. "
+            f"Run `triage_state.py approve {args.item}` first (Gate 1)."
+        )
     if args.resolve and not args.post:
         raise ScriptError("--resolve requires --post; refusing to resolve silently.")
-    if item.get("status") not in POSTABLE_STATUSES and not args.force:
-        raise ScriptError(
-            f"Item #{args.item} is '{item.get('status')}', not approved. "
-            "Approve it first, or pass --force if you know what you are doing."
-        )
-    if item.get("postedAt") and not args.force:
-        raise ScriptError(
-            f"Item #{args.item} was already posted at {item['postedAt']}. "
-            "Use --force to post again."
-        )
 
+    body = read_body(args)
     threads = target_threads(state, item, args.thread)
-    provider = state.get("provider", "gitlab")
     host = state["host"]
 
-    print(f"{'post' if args.post else 'dry-run'}  {provider}:{state['repo']}!{state['target']['number']}")
+    print(f"{'post' if args.post else 'dry-run'}  gitlab:{state['repo']}!{state['target']['number']}")
     print(f"item     #{item['n']} {item['verdict']} ({item['status']})")
     for thread in threads:
         print(f"thread   {thread['id']}  @{thread.get('author')}")
@@ -157,27 +133,32 @@ def main(argv: list[str] | None = None) -> int:
         print("Preview only. Re-run with --post to send.")
         return 0
 
-    posted = []
+    source = "override"
     for thread in threads:
+        posted_at = now_iso()
         result = gitlab_reply(host, state, thread["remoteId"], body)
+        resolved_at = None
         if args.resolve:
             gitlab_resolve(host, state, thread["remoteId"])
-        posted.append(
+            resolved_at = now_iso()
+        item.setdefault("posts", []).append(
             {
                 "threadId": thread["id"],
-                "at": now_iso(),
+                "postedAt": posted_at,
+                "resolvedAt": resolved_at,
+                "body": body,
                 "url": (result or {}).get("url"),
+                "source": source,
             }
         )
         print(f"posted   {thread['id']}")
 
-    item["postedAt"] = now_iso()
-    item["postedReplies"] = posted
-    item["status"] = "resolved" if args.resolve else "posted"
+    refresh_item_status(item)
+    item["updatedAt"] = now_iso()
     add_event(
         state,
         "posted",
-        f"item #{item['n']} -> {[entry['threadId'] for entry in posted]}"
+        f"item #{item['n']} -> {[thread['id'] for thread in threads]}"
         + (" (resolved)" if args.resolve else ""),
     )
     save_state(path, state)

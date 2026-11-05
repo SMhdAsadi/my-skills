@@ -116,6 +116,46 @@ class HunkParsingTests(unittest.TestCase):
         )
         self.assertEqual(va.hunk_ranges(diff), {"logo.png": []})
 
+    def test_parse_changes_tracks_rename_source(self):
+        diff = (
+            "diff --git a/old.py b/new.py\n"
+            "similarity index 90%\n"
+            "rename from old.py\n"
+            "rename to new.py\n"
+            "--- a/old.py\n"
+            "+++ b/new.py\n"
+            "@@ -1 +1 @@\n"
+            "-a\n"
+            "+b\n"
+        )
+        ranges, renames = va.parse_changes(diff)
+        self.assertIn("new.py", ranges)
+        self.assertEqual(renames, {"new.py": "old.py"})
+
+    def test_parse_changes_tracks_copy_source(self):
+        diff = (
+            "diff --git a/source.py b/twin.py\n"
+            "similarity index 100%\n"
+            "copy from source.py\n"
+            "copy to twin.py\n"
+        )
+        ranges, renames = va.parse_changes(diff)
+        self.assertEqual(ranges, {"twin.py": []})
+        self.assertEqual(renames, {"twin.py": "source.py"})
+
+    def test_parse_changes_without_rename_has_empty_map(self):
+        diff = (
+            "diff --git a/a.py b/a.py\n"
+            "--- a/a.py\n"
+            "+++ b/a.py\n"
+            "@@ -1,3 +1,4 @@\n"
+            " alpha\n"
+            "+beta\n"
+            " gamma\n"
+            " delta\n"
+        )
+        self.assertEqual(va.parse_changes(diff)[1], {})
+
 
 class RealDiffTests(unittest.TestCase):
     def setUp(self):
@@ -135,6 +175,22 @@ class RealDiffTests(unittest.TestCase):
         self.assertEqual(ranges["gone.txt"], [])
         self.assertEqual(ranges["new.txt"], [(1, 4)])
         self.assertEqual(ranges["renamed.txt"], [])
+
+    def test_parse_diff_changes_tracks_a_real_rename(self):
+        ranges, renames = va.parse_diff_changes(self.base, self.head, self.root)
+        self.assertEqual(ranges["renamed.txt"], [])
+        self.assertEqual(renames, {"renamed.txt": "old.txt"})
+        self.assertNotIn("gone.txt", renames)
+
+    def test_file_anchor_on_a_really_deleted_file_is_ok(self):
+        status, detail = va.verify_anchor(
+            {"kind": "file", "path": "gone.txt"},
+            {"gone.txt": []},
+            self.root,
+            self.head,
+        )
+        self.assertEqual(status, "ok")
+        self.assertEqual(detail, "gone.txt")
 
 
 class AnchorVerificationTests(unittest.TestCase):
@@ -172,6 +228,37 @@ class AnchorVerificationTests(unittest.TestCase):
         anchor = self.anchor(line=5, endLine=8)
         status, _ = va.verify_anchor(anchor, self.ranges, self.root, self.head)
         self.assertEqual(status, "ok")
+
+    def test_end_line_past_file_length_is_missing(self):
+        anchor = self.anchor(line=5, endLine=40)
+        status, detail = va.verify_anchor(anchor, self.ranges, self.root, self.head)
+        self.assertEqual(status, "missing")
+        self.assertIn("outside the file", detail)
+
+    def test_end_line_past_the_hunk_is_out_of_diff(self):
+        anchor = self.anchor(line=5, endLine=9)
+        status, _ = va.verify_anchor(anchor, self.ranges, self.root, self.head)
+        self.assertEqual(status, "out-of-diff")
+
+    def test_span_across_two_hunks_is_out_of_diff(self):
+        anchor = self.anchor(line=5, endLine=11)
+        status, _ = va.verify_anchor(
+            anchor, {"a.py": [(5, 6), (10, 12)]}, self.root, self.head
+        )
+        self.assertEqual(status, "out-of-diff")
+
+    def test_inline_line_past_file_length_is_missing(self):
+        anchor = self.anchor(line=21)
+        status, detail = va.verify_anchor(anchor, {"a.py": [(21, 25)]}, self.root, self.head)
+        self.assertEqual(status, "missing")
+        self.assertIn("outside the file", detail)
+
+    def test_file_anchor_outside_diff_is_out_of_diff(self):
+        (self.root / "b.py").write_text("x\n", encoding="utf-8")
+        status, _ = va.verify_anchor(
+            {"kind": "file", "path": "b.py"}, {"a.py": [(1, 3)]}, self.root, self.head
+        )
+        self.assertEqual(status, "out-of-diff")
 
     def test_head_moved_short_circuits_content_checks(self):
         anchor = self.anchor(path="does-not-exist.py", line=999)

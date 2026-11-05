@@ -26,7 +26,7 @@ mr-comments-<project-slug>-<iid>.json
 mr-comments-team-api-2340.json
 ```
 
-Re-initialising preserves `comments`, `dropped`, and `events`, updates the `mr` block, and appends an `updated` event. If HEAD moved, it records a warning and leaves re-verification to `verify`.
+Re-initialising preserves `comments`, `dropped`, and `events`, updates the `mr` block, and appends an `updated` event. If HEAD moved, it records a warning and leaves re-verification to `verify`. `add` and `update` refuse while `mr.headSha` is stale; a clean `verify` writes the new HEAD into both `mr.headSha` and `mr.diffRefs.head_sha`, so the footer and the next GitLab payload agree.
 
 ---
 
@@ -63,6 +63,7 @@ Re-initialising preserves `comments`, `dropped`, and `events`, updates the `mr` 
       "anchor": {
         "kind": "inline",
         "path": "src/components/VSlider/VSlider.tsx",
+        "oldPath": null,
         "line": 118,
         "endLine": 124,
         "inDiff": true,
@@ -118,7 +119,7 @@ Re-initialising preserves `comments`, `dropped`, and `events`, updates the `mr` 
 
 | Field | Type | Required | Notes |
 |---|---|---|---|
-| `provider` | `"gitlab"` | yes | GitLab only in v1. |
+| `provider` | `"gitlab"` | yes | GitLab only. |
 | `host` | string | yes | `gitlab.example.com`, no scheme. |
 | `project` | string | yes | `group/subgroup/project`. |
 | `iid` | string | yes | MR IID, not the global id. |
@@ -153,8 +154,9 @@ Re-initialising preserves `comments`, `dropped`, and `events`, updates the `mr` 
 |---|---|---|---|
 | `kind` | enum | yes | `inline`, `file`, `mr`. |
 | `path` | string \| null | inline/file | Repository-relative path at HEAD. |
+| `oldPath` | string \| null | no | Pre-rename path when the diff renames or copies the file; `null` otherwise. Set by `add`, `update --reanchor`, and `verify`. |
 | `line` | integer \| null | inline | The API anchor. Always a single line. |
-| `endLine` | integer \| null | no | Display and prose only. Never sent as `line_range`. |
+| `endLine` | integer \| null | no | Display and prose only. Never sent as `line_range`, but the span is verified. |
 | `inDiff` | boolean \| null | no | Set by verification; null for MR-level. |
 | `verifiedAt` | string \| null | no | HEAD SHA the anchor was verified at. |
 | `verifiedHash` | string \| null | no | `sha256:` of `line..endLine` at HEAD. |
@@ -177,6 +179,8 @@ Re-initialising preserves `comments`, `dropped`, and `events`, updates the `mr` 
 | `reason` | string | Why it was rejected. |
 | `source` | `conversation` \| `diff` | Where it came from. |
 
+`comments.py drop --claim ... --reason ... [--source ...]` appends these rows before a candidate ever becomes a comment; `drop <id>` moves an existing comment to `dropped` instead. Both append a `dropped` event.
+
 Events are `{at, kind, detail}` with `kind` ∈ `created`, `updated`, `verified`, `approved`, `dropped`, `posted`, `skipped-duplicate`.
 
 ---
@@ -189,9 +193,17 @@ Events are `{at, kind, detail}` with `kind` ∈ `created`, `updated`, `verified`
 | `file` | `path`; path in the diff's changed-file list | GitLab file note (`position_type: "file"`). |
 | `mr` | none | Regular MR note (`POST .../notes`). |
 
-`endLine` widens the range a human sees; it does not widen the API anchor. v1 deliberately avoids `line_range` / `line_code`, which are fragile across GitLab versions and renamed files. A comment about a whole deleted file demotes to `file` or `mr`; v1 never anchors a deleted line.
+Verification order for one anchor:
 
----
+1. A state HEAD that differs from the live HEAD is `head-moved`, before any content check.
+2. `mr` is always `ok`.
+3. A missing `path` is `missing`; a path absent from the diff is `out-of-diff`.
+4. `file` is `ok` as soon as the path is in the diff's changed-file set. It does not need the file at HEAD, so deleted, binary, and pure-rename files work.
+5. `inline` must exist at HEAD, must have an integer `line`, and its whole `line..endLine` span must fit inside both the file and a single diff hunk.
+
+A renamed or copied destination path (`new_path`) also records its source path as `oldPath`, taken from the diff's `rename from` / `copy from` line. That is what keeps the GitLab payload's `old_path` correct without a git call at preview time.
+
+`endLine` widens the range a human sees and the range the verifier and hash cover; it does not widen the API anchor. The tool deliberately avoids `line_range` / `line_code`, which are fragile across GitLab versions and renamed files. A comment about a whole deleted file uses `file`; the tool never anchors a deleted line.
 
 ## Status lifecycle
 
@@ -205,8 +217,19 @@ pending ──approve──▶ approved ──post──▶ posted
 - `approved` → `posted`, `pending` (any edit resets it), `dropped`
 - `dropped` is terminal for posting; the row stays in `comments` so its id is never reused.
 - `posted` is terminal. No edits, no second post.
+- Dropping a comment or recording a rejected candidate never blocks re-adding the same body at the same anchor: duplicate detection ignores `dropped` rows.
 
 `approve` replaces the previous plan: a comment that was approved and is not in the new expression returns to `pending` and is reported as un-approved.
+
+## Recording rejected candidates
+
+`drop` has two modes and never guesses which one you meant:
+
+| Invocation | Effect |
+|---|---|
+| `drop C3 --reason "..."` | Moves the existing comment to `dropped`, sets `dropReason`, appends a `dropped` event. Posted comments refuse. |
+| `drop --claim "..." --reason "..." [--source conversation\|diff]` | Appends `{claim, reason, source}` to `dropped[]` and a `dropped` event; no comment is created. |
+| Both an id and `--claim`, or neither | Error: ambiguous invocation. |
 
 ---
 
@@ -218,12 +241,16 @@ Hard failures, not warnings:
 |---|---|
 | `type` not in the allowed set | reject |
 | `severity` not in the allowed set | reject |
+| `decision` is `rejected` or `hypothesis` | reject; point at `drop --claim` |
+| `decision == open` on a non-`question` type | reject |
+| `decision != agreed` on `blocker`, `suggestion`, `follow-up`, or `test-gap` | reject |
+| `confidence == low` on any type | reject; point at `drop --claim` |
 | `inline` without `path` + `line` | reject |
-| `inline` whose line is not in the diff | reject; suggest `file` or `mr` |
-| `blocker` or `suggestion` with `decision != agreed` | reject |
-| `blocker` with `confidence == low` | reject |
+| `inline` whose `line..endLine` is outside the file at HEAD | reject |
+| `inline` whose `line..endLine` spans outside one diff hunk | reject; suggest `file` or `mr` |
+| `file` anchor whose path is not in the diff | reject; suggest `mr` |
 | Evidence missing, or without `path:line`, a backticked command, a URL, or a measurement | reject |
-| Duplicate `(path, line, normalised body)` | reject |
+| Duplicate `(path, line, normalised body)` against a live comment | reject, on `add` and after an `update` |
 | Title longer than 60 characters | reject |
 | Body longer than 120 words (250 with `--long`) | reject |
 | `suggestion` without a replacement | reject |
@@ -232,6 +259,8 @@ Hard failures, not warnings:
 | Exactly at `budget.target` | warn once, then allow |
 | Comment id already exists | reject |
 | `update --reanchor` without re-verification | reject |
+| `add` / `update` when live HEAD differs from `mr.headSha` | reject; run `verify` or `init` first |
+| `update` with `--path` / `--line` but no `--reanchor` | reject |
 
 `looks_like_evidence(text)` accepts any of: `\S+:\d+`, `` `[^`]+` ``, `https?://…`, or a number followed by `ms|s|fps|%|x|KB|MB|GB`.
 

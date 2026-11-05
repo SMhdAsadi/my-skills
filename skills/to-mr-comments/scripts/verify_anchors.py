@@ -30,14 +30,20 @@ def _clean_path(raw: str, prefix: str) -> str | None:
     return raw
 
 
-def hunk_ranges(diff_text: str) -> dict[str, list[tuple[int, int]]]:
-    """Map each destination path to the new-file ranges a note may target.
+def parse_changes(
+    diff_text: str,
+) -> tuple[dict[str, list[tuple[int, int]]], dict[str, str]]:
+    """Parse a unified diff into anchor ranges and a rename map.
 
-    A key with an empty list means "changed, but no anchorable new lines" —
-    a deleted file, a binary file, or a pure mode change. That distinction
-    matters: `file` anchors are allowed there, `inline` anchors are not.
+    Returns `(ranges, renames)` where `ranges` maps each destination path to
+    the new-file ranges a note may target, and `renames` maps a destination
+    path to its pre-rename (or pre-copy) source path. A key with an empty
+    range list means "changed, but no anchorable new lines" — a deleted file,
+    a binary file, or a pure mode change. That distinction matters: `file`
+    anchors are allowed there, `inline` anchors are not.
     """
     ranges: dict[str, list[tuple[int, int]]] = {}
+    renames: dict[str, str] = {}
     old_path: str | None = None
     new_path: str | None = None
     source_path: str | None = None
@@ -49,16 +55,22 @@ def hunk_ranges(diff_text: str) -> dict[str, list[tuple[int, int]]]:
             source_path = None
             continue
 
+        if line.startswith("rename from ") or line.startswith("copy from "):
+            source_path = _clean_path(line.split(" from ", 1)[1], "")
+            continue
+
         if line.startswith("rename to ") or line.startswith("copy to "):
             target = _clean_path(line.split(" to ", 1)[1], "")
             if target:
                 ranges.setdefault(target, [])
                 new_path = target
+                if source_path and source_path != target:
+                    renames[target] = source_path
             continue
 
         if line.startswith("--- "):
             old_path = _clean_path(line[4:], "a/")
-            if old_path and not new_path:
+            if old_path and not source_path:
                 source_path = old_path
             continue
 
@@ -101,17 +113,33 @@ def hunk_ranges(diff_text: str) -> dict[str, list[tuple[int, int]]]:
 
     for path in ranges:
         ranges[path].sort()
-    return ranges
+    return ranges, renames
 
 
-def parse_diff(base: str, head: str, cwd=None) -> dict[str, list[tuple[int, int]]]:
-    """Return the new-file visible ranges of `base...head`, keyed by path."""
+def hunk_ranges(diff_text: str) -> dict[str, list[tuple[int, int]]]:
+    """Map each destination path to the new-file ranges a note may target."""
+    return parse_changes(diff_text)[0]
+
+
+def _diff_text(base: str, head: str, cwd=None) -> str:
     ref = f"{base}...{head}"
     proc = run(
         ["git", "diff", "--unified=3", "--no-color", "--no-ext-diff", ref],
         cwd=cwd,
     )
-    return hunk_ranges(proc.stdout)
+    return proc.stdout
+
+
+def parse_diff(base: str, head: str, cwd=None) -> dict[str, list[tuple[int, int]]]:
+    """Return the new-file visible ranges of `base...head`, keyed by path."""
+    return parse_changes(_diff_text(base, head, cwd))[0]
+
+
+def parse_diff_changes(
+    base: str, head: str, cwd=None
+) -> tuple[dict[str, list[tuple[int, int]]], dict[str, str]]:
+    """Return `(ranges, renames)` for `base...head` in one git invocation."""
+    return parse_changes(_diff_text(base, head, cwd))
 
 
 def _read_lines(path: str, root: Path | None = None) -> list[str]:
@@ -156,6 +184,10 @@ def verify_anchor(
     status ∈ ok | moved | out-of-diff | missing | head-moved.
     `head-moved` short-circuits every content check: if the state was written
     against a different HEAD, the anchor has to be re-read, not guessed at.
+
+    A `file` anchor only needs its path in the diff's changed-file set, so it
+    works for a deleted file, a binary file, or a pure rename. Only `inline`
+    anchors read the file at HEAD, because only they anchor a line of it.
     """
     if state_head is not None and head_sha is not None and state_head != head_sha:
         return "head-moved", f"state is at {state_head[:7]}, HEAD is {head_sha[:7]}"
@@ -168,25 +200,35 @@ def verify_anchor(
     if not path:
         return "missing", "anchor has no path"
 
-    full = Path(root) / path
-    if not full.is_file():
-        return "missing", f"{path} does not exist at HEAD"
-
     if path not in ranges:
         return "out-of-diff", f"{path} is not in the diff"
 
     if kind == "file":
         return "ok", path
 
+    full = Path(root) / path
+    if not full.is_file():
+        return "missing", f"{path} does not exist at HEAD"
+
     line = anchor.get("line")
     if not isinstance(line, int):
         return "missing", f"{path} has no line"
-    if not any(start <= line <= end for start, end in ranges[path]):
-        return "out-of-diff", f"{path}:{line} is outside the diff hunks"
+
+    end = anchor.get("endLine") or line
+    if not isinstance(end, int):
+        return "missing", f"{path} has an invalid end line"
+
+    lines = _read_lines(path, root)
+    if not 1 <= line <= end <= len(lines):
+        return "missing", (
+            f"{path}:{line}-{end} is outside the file ({len(lines)} lines)"
+        )
+
+    if not any(start <= line and end <= hunk_end for start, hunk_end in ranges[path]):
+        return "out-of-diff", f"{path}:{line}-{end} is outside the diff hunks"
 
     verified_hash = anchor.get("verifiedHash")
     if verified_hash:
-        end = anchor.get("endLine") or line
         try:
             current = range_hash(path, line, end, root)
         except ScriptError as error:

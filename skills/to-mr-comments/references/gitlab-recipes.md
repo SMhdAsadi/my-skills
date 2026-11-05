@@ -1,4 +1,4 @@
-# GitLab recipes (v1)
+# GitLab recipes
 
 Every network call goes through `glab api`. No direct HTTP, no `gh`. The scripts build these commands; this page exists so a human can debug or run them by hand.
 
@@ -71,8 +71,8 @@ The discussions endpoint takes the note text under `body`. Do not send `note`; t
 
 Rules:
 
-- `old_path` and `new_path` are both required. Use the same value unless the diff says the file was renamed.
-- An added or context line uses `new_line` only. A deleted line uses `old_line` only; v1 does not anchor deletions and demotes them to a `file` note.
+- `old_path` and `new_path` are both required. They are equal unless the diff renames or copies the file; for a rename the state stores the pre-rename path as `anchor.oldPath` and the payload sends it as `old_path`.
+- An added or context line uses `new_line` only. A deleted line uses `old_line` only; this tool does not anchor deletions and uses a `file` note instead.
 - `line_range` / `line_code` are deliberately not used. See the last section.
 
 ### File note
@@ -90,7 +90,9 @@ Rules:
 }
 ```
 
-The file must appear in the MR diff. A binary file is a valid `file` anchor and never an `inline` one. A file note also goes to `/discussions`; only the position differs.
+The file must appear in the MR diff. A binary file, a deleted file, or a pure rename is a valid `file` anchor and never an `inline` one — that is why the verifier checks the changed-file set rather than the file at HEAD. When the diff renamed the file, the payload also carries `"old_path": "<pre-rename path>"`; an unrenamed file keeps the minimal two-field shape.
+
+A file note also goes to `/discussions`; only the position differs.
 
 ### MR-level note
 
@@ -149,7 +151,7 @@ glab api --hostname gitlab.example.com \
 
 Flatten every `discussions[].notes[]`, skipping notes where `system` is true: system notes are join/rename events, not review comments.
 
-A note is comparable when `position.new_path` / `position.new_line` match the comment's anchor.
+A note is comparable when `position.new_path` / `position.new_line` match the comment's anchor. An MR-level comment has neither, so it is compared against MR-level notes by text alone.
 
 Normalise before comparing:
 
@@ -158,7 +160,7 @@ Normalise before comparing:
 3. Replace remaining punctuation with spaces.
 4. Collapse whitespace.
 
-Compare the normalised comment body and the normalised note body with `difflib.SequenceMatcher`. A ratio of **0.9 or higher** is the same finding. Record a `skipped-duplicate` event and store the existing note id; do not post again.
+Compare the normalised note body against three renderings of the comment — inline (`**Title**`), summary (`### Title`), and the raw body — and take the highest ratio. This is what lets an MR-level note, which is posted with the summary rendering, still match its own earlier copy. A ratio of **0.9 or higher** is the same finding. Record a `skipped-duplicate` event and store the existing note id; do not post again.
 
 Idempotence has a second layer: `--post` skips any comment that already carries a `posted.noteId`, including the one it stored when it matched a live duplicate. Re-running the command creates zero duplicates.
 
@@ -178,7 +180,7 @@ if (max > min) {
 
 - `-0` is the number of lines above the anchor to replace.
 - `+0` is the number of lines below the anchor to replace.
-- The replacement is at most 5 lines in v1. Larger rewrites belong in prose, not a suggestion block.
+- The replacement is at most 5 lines. Larger rewrites belong in prose, not a suggestion block.
 - Never wrap the block in another fence when building the API payload. The copy-box fence in `mr-comments.md` is for the chat UI; the note body contains the inner block only.
 
 ---
@@ -187,7 +189,7 @@ if (max > min) {
 
 | Status / symptom | Meaning | Action |
 |---|---|---|
-| `400 Bad Request` on create | The position is not in the diff, or a SHA is stale. | Run `comments.py verify`, re-anchor or demote to `file`/`mr`. Never retry unchanged. |
+| `400 Bad Request` on create | The position is not in the diff, or a SHA or `old_path` is stale/wrong. | Run `comments.py verify` (which syncs both head SHAs), re-anchor, or demote to `file`/`mr`. Never retry unchanged. |
 | `401` / `403` | Missing or under-scoped token. | Report the exact command. The token needs `api` scope for the target host. Do not retry. |
 | `404` | Wrong project path, IID, or host. | Re-run `init --from-mr`; check the URL-encoded project path. |
 | `409` / `422` | Duplicate note, locked MR, or invalid body. | Report the comment id and the response body. Do not loop. |
@@ -203,4 +205,4 @@ No failure path posts a partial batch silently. Created note ids are saved befor
 
 GitLab supports `position[line_range]` for multi-line notes, but the payload needs both start and end line codes tied to a specific diff version. Those codes break on rebase, rename, and whitespace-only changes, and a rejected position is silent enough to waste a review cycle.
 
-v1 sends one `new_line` and keeps `endLine` as display metadata. The rendered comment still says `path:118-124`, so the human sees the range; GitLab anchors the note at 118. If a future version needs true ranges, add them behind a capability check rather than replacing the single-line default.
+The tool sends one `new_line` and keeps `endLine` as verified display metadata. The rendered comment still says `path:118-124`, so the human sees the range; GitLab anchors the note at 118. If a future version needs true ranges, add them behind a capability check rather than replacing the single-line default.

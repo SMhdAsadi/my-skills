@@ -29,13 +29,15 @@ The result is a deterministic `mr-comments.md` with one copy box per comment. Po
 
 - **Comment budget** — aim for 5, hard cap 10. `--force` is recorded so a later reader knows the cap was overridden.
 - **Evidence is mandatory** — a `path:line`, a backticked command, a URL, or a measurement with units. "Looks slow" is rejected by the script.
-- **Anchors verified at HEAD** — inline lines must fall inside the MR diff; a hash catches text drift; a moved line is `moved`, never silently accepted.
-- **Three anchor kinds** — `inline`, `file`, and `mr`, so a comment about a deleted or binary file still has a home.
+- **Anchors verified at HEAD** — inline lines and their whole `line..endLine` span must fall inside one diff hunk and inside the file; a hash catches text drift; a moved line is `moved`, never silently accepted.
+- **Three anchor kinds** — `inline`, `file`, and `mr`, so a comment about a deleted, binary, or renamed file still has a home. Renames record the pre-rename path and send both `old_path` and `new_path`.
+- **Auditable drops** — `drop C3 --reason "..."` retires a comment, `drop --claim "..." --reason "..."` records a rejected candidate before it ever became one. "No comment" stays explainable.
+- **Strict decision matrix** — `rejected` and `hypothesis` never become comments, `low` confidence is always dropped, and `open` is only allowed on a `question`.
 - **Status lifecycle** — `pending → approved → posted`, with `dropped` as an auditable side exit. Editing an approved comment resets it to pending.
 - **Deterministic renderer** — inline and summary modes, collision-safe fences, severity ordering, and a footer that states exactly how many anchors are verified at which SHA.
-- **Deduplication** — an existing note on the same `path:line` with a 0.9 text similarity is skipped, not repeated.
+- **Deduplication** — an existing inline or MR-level note with a 0.9 text similarity is skipped, not repeated; edits are checked too.
 - **GitLab-only, on purpose** — `glab api` is the only transport. Non-GitLab hosts are rejected before any comment is generated.
-- **State that survives the session** — `mr-comments-<project>-<iid>.json` in a gitignored scratch directory, never a tracked path.
+- **State that survives the session** — `mr-comments-<project>-<iid>.json` in a gitignored scratch directory, never a tracked path. `add` and `update` refuse a moved HEAD until `verify` resynchronises the state.
 
 ---
 
@@ -71,9 +73,9 @@ harvest ──▶ select ──▶ certify ──▶ emit ──▶ [approve] �
  conversa     policy     verify      md       pending       comments
 ```
 
-1. **Harvest** — the conversation first, the diff second. Every candidate gets a decision and a short provenance quote.
-2. **Select** — keep only findings with a reachable consequence; write the rest to `dropped[]`.
-3. **Certify** — re-read the line at HEAD, confirm it is in the diff, write the evidence, then `comments.py add` (which validates and verifies) and `comments.py verify`.
+1. **Harvest** — the conversation first, an existing `review-concerns.json` from a `Review Walkthrough` session second, the diff last. Every candidate gets a decision and a short provenance quote.
+2. **Select** — keep only findings with a reachable consequence; write the rest to `dropped[]` with `comments.py drop --claim`.
+3. **Certify** — re-read the line at HEAD, confirm it is inside the diff, write the evidence, then `comments.py add` (which validates and verifies) and `comments.py verify`.
 4. **Emit** — render `mr-comments.md` and present the path, footer, dropped table, and copy blocks.
 5. **Approve** — `comments.py approve` is the explicit gate; nothing is posted without it.
 6. **Post** — `post_comments.py` previews the payloads, then `--post` creates the real comments.
@@ -109,9 +111,9 @@ No `glab`? Generation and rendering still work; posting stops at the `.md`, and 
 
 ## Limitations
 
-- GitLab only in v1. GitHub is not supported.
+- GitLab only. GitHub is not supported.
 - One MR per run.
-- Multi-line `line_range` anchors are out of scope; the API anchor is one line and `endLine` is display-only.
+- Multi-line `line_range` anchors are out of scope; the API anchor is one line while `endLine` is verified and display-only.
 - Suggestions are capped at 5 replacement lines.
 - It writes comments about code; it does not apply fixes. Run the fix in the same branch and re-verify.
 - It does not reply to or resolve existing threads — that is [`mr-comment-triage`](../mr-comment-triage/).

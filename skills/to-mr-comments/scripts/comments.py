@@ -13,7 +13,7 @@ Subcommands:
     list      List comments in render order
     verify    Re-check every anchor against HEAD
     approve   Parse an approval expression and move comments to approved/dropped
-    drop      Drop one comment without deleting it
+    drop      Drop one comment, or record a rejected candidate in dropped[]
     render    Write mr-comments.md and print its path
 """
 
@@ -27,6 +27,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from _common import (
+    ANCHOR_KINDS,
     BUDGET_MAX,
     BUDGET_TARGET,
     CONFIDENCES,
@@ -258,6 +259,7 @@ def build_anchor(
         return {
             "kind": "inline",
             "path": path,
+            "oldPath": None,
             "line": line,
             "endLine": end_line,
             "inDiff": None,
@@ -269,6 +271,7 @@ def build_anchor(
         return {
             "kind": "file",
             "path": path,
+            "oldPath": None,
             "line": None,
             "endLine": None,
             "inDiff": None,
@@ -279,6 +282,7 @@ def build_anchor(
     return {
         "kind": "mr",
         "path": None,
+        "oldPath": None,
         "line": None,
         "endLine": None,
         "inDiff": None,
@@ -288,10 +292,22 @@ def build_anchor(
     }
 
 
-def refresh_anchor(anchor: dict, root: Path, head: str) -> None:
-    """Stamp a known-good anchor with the verification metadata for this HEAD."""
+def refresh_anchor(
+    anchor: dict,
+    root: Path,
+    head: str,
+    rename_map: dict[str, str] | None = None,
+) -> None:
+    """Stamp a known-good anchor with the verification metadata for this HEAD.
+
+    `rename_map` maps a destination path to its pre-rename source. Pass the
+    parsed map to refresh `oldPath`; leave it None when no diff was parsed.
+    """
     kind = anchor.get("kind")
     anchor["verifiedAt"] = head
+    if rename_map is not None:
+        path = anchor.get("path")
+        anchor["oldPath"] = (rename_map.get(path) if path else None) or None
     if kind == "inline":
         path = anchor["path"]
         line = anchor["line"]
@@ -305,10 +321,16 @@ def refresh_anchor(anchor: dict, root: Path, head: str) -> None:
         anchor["inDiff"] = None if kind == "mr" else True
 
 
-def stamp_anchor(anchor: dict, ranges, root: Path, head: str) -> None:
+def stamp_anchor(
+    anchor: dict,
+    ranges,
+    root: Path,
+    head: str,
+    rename_map: dict[str, str] | None = None,
+) -> None:
     status, detail = verify_anchors.verify_anchor(anchor, ranges, root, head)
     if status == "ok":
-        refresh_anchor(anchor, root, head)
+        refresh_anchor(anchor, root, head, rename_map)
         return
     hint = "Use a `file` or `mr` anchor instead."
     if status in ("missing", "moved"):
@@ -366,11 +388,20 @@ def validate_comment(comment: dict, state: dict) -> None:
     if confidence not in CONFIDENCES:
         raise ScriptError(f"confidence must be one of {', '.join(CONFIDENCES)}.")
 
-    if ctype == "blocker":
-        if decision != "agreed":
-            raise ScriptError("blocker comments require --decision agreed.")
-        if confidence == "low":
-            raise ScriptError("blocker comments cannot have low confidence; drop it instead.")
+    if decision in ("rejected", "hypothesis"):
+        raise ScriptError(
+            f"--decision {decision} cannot become a comment. Record it with "
+            '`comments.py drop --claim "<candidate>" --reason "<why>"`.'
+        )
+    if decision == "open" and ctype != "question":
+        raise ScriptError("open decisions must use --type question.")
+    if ctype != "question" and decision != "agreed":
+        raise ScriptError(f"{ctype} comments require --decision agreed.")
+    if confidence == "low":
+        raise ScriptError(
+            "low-confidence candidates cannot become comments; "
+            "drop it with `comments.py drop --claim` instead."
+        )
 
     suggestion = comment.get("suggestion")
     if ctype == "suggestion":
@@ -395,6 +426,8 @@ def find_duplicate(state: dict, comment: dict) -> dict | None:
     body = normalize_body(comment.get("body") or "")
     for other in state.get("comments", []):
         if other.get("id") == comment.get("id"):
+            continue
+        if other.get("status") == "dropped":
             continue
         other_anchor = other.get("anchor") or {}
         if (
@@ -559,7 +592,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         asserted = bool(args.host and args.project) and not glab_available()
         if known_other or not asserted:
             raise ScriptError(
-                f"`to-mr-comments` is GitLab-only in v1. The remote `{host}` is not a "
+                f"`to-mr-comments` is GitLab-only. The remote `{host}` is not a "
                 "confirmed GitLab instance. Stopping without generating comments."
             )
 
@@ -673,6 +706,42 @@ def cmd_init(args: argparse.Namespace) -> int:
     return 0
 
 
+def ensure_state_head(state: dict, head: str) -> None:
+    """Refuse to write at a HEAD the state was not initialised against."""
+    expected = (state.get("mr") or {}).get("headSha")
+    if not expected:
+        raise ScriptError(
+            "The state has no HEAD SHA. Run `comments.py init` before adding or "
+            "editing comments."
+        )
+    if head != expected:
+        raise ScriptError(
+            f"The state is at {str(expected)[:7]} but HEAD is {head[:7]}. Run "
+            "`comments.py verify` (or `comments.py init` if verify cannot pass) "
+            "before adding or editing comments."
+        )
+
+
+def certify_anchor(
+    path: str | None,
+    line: int | None,
+    end_line: int | None,
+    state: dict,
+    root: Path,
+    head: str,
+) -> dict:
+    """Build an anchor, verify it against this HEAD, and stamp it."""
+    anchor = build_anchor(path, line, end_line)
+    if anchor["kind"] == "mr":
+        stamp_anchor(anchor, {}, root, head, {})
+        return anchor
+    ranges, rename_map = verify_anchors.parse_diff_changes(
+        state["mr"]["base"], head, root
+    )
+    stamp_anchor(anchor, ranges, root, head, rename_map)
+    return anchor
+
+
 def cmd_add(args: argparse.Namespace) -> int:
     state_path = resolve_state_file(args.state)
     state = load_state(state_path)
@@ -680,16 +749,13 @@ def cmd_add(args: argparse.Namespace) -> int:
     if root is None:
         raise ScriptError("Not inside a git repository.")
     head = git_head(root)
+    ensure_state_head(state, head)
 
     if args.line is not None and not args.path:
         raise ScriptError("--line requires --path.")
-    kind = "mr" if not args.path else ("inline" if args.line is not None else "file")
-    ranges: dict = {}
-    if kind != "mr":
-        ranges = verify_anchors.parse_diff(state["mr"]["base"], head, root)
-
-    anchor = build_anchor(args.path, args.line, args.end_line)
-    stamp_anchor(anchor, ranges, root, head)
+    anchor = certify_anchor(
+        args.path, args.line, args.end_line, state, root, head
+    )
 
     body = Path(args.body_file).read_text(encoding="utf-8").strip()
     suggestion = None
@@ -771,13 +837,38 @@ def cmd_update(args: argparse.Namespace) -> int:
     if root is None:
         raise ScriptError("Not inside a git repository.")
     head = git_head(root)
+    ensure_state_head(state, head)
+
+    if args.kind is not None and not args.reanchor:
+        raise ScriptError("--kind only applies with --reanchor.")
 
     if args.reanchor:
-        if args.path is None:
-            raise ScriptError("--reanchor requires --path (and --line for an inline anchor).")
-        ranges = verify_anchors.parse_diff(state["mr"]["base"], head, root)
-        anchor = build_anchor(args.path, args.line, args.end_line)
-        stamp_anchor(anchor, ranges, root, head)
+        demote = args.kind == "mr" or (
+            args.kind is None
+            and args.path is None
+            and args.line is None
+            and args.end_line is None
+        )
+        if demote:
+            if args.path is not None or args.line is not None or args.end_line is not None:
+                raise ScriptError(
+                    "an MR-level anchor takes no --path, --line, or --end-line."
+                )
+            anchor = certify_anchor(None, None, None, state, root, head)
+        else:
+            kind = args.kind or ("inline" if args.line is not None else "file")
+            if kind == "inline":
+                if args.path is None or args.line is None:
+                    raise ScriptError("an inline anchor requires --path and --line.")
+            elif args.path is None:
+                raise ScriptError("a file anchor requires --path.")
+            elif args.line is not None or args.end_line is not None:
+                raise ScriptError(
+                    "a file anchor takes no --line or --end-line; use --kind inline."
+                )
+            anchor = certify_anchor(
+                args.path, args.line, args.end_line, state, root, head
+            )
         comment["anchor"] = anchor
     elif args.path is not None or args.line is not None or args.end_line is not None:
         raise ScriptError(
@@ -800,10 +891,23 @@ def cmd_update(args: argparse.Namespace) -> int:
         )
     if args.quote is not None:
         comment.setdefault("source", {})["quote"] = args.quote
+    if args.source is not None:
+        comment.setdefault("source", {})["kind"] = args.source
+    if args.decision is not None:
+        comment.setdefault("source", {})["decision"] = args.decision
+    if args.confidence is not None:
+        comment.setdefault("source", {})["confidence"] = args.confidence
     if args.long is not None:
         comment["long"] = bool(args.long)
 
     validate_comment(comment, state)
+
+    duplicate = find_duplicate(state, comment)
+    if duplicate:
+        raise ScriptError(
+            f"Edit would duplicate {duplicate['id']}: same anchor and body "
+            "already exist."
+        )
 
     if comment.get("status") == "approved":
         comment["status"] = "pending"
@@ -853,19 +957,19 @@ def cmd_verify(args: argparse.Namespace) -> int:
         raise ScriptError("Not inside a git repository.")
     head = git_head(root)
     base = args.base or state["mr"]["base"]
-    ranges = verify_anchors.parse_diff(base, head, root)
+    ranges, rename_map = verify_anchors.parse_diff_changes(base, head, root)
 
     checked = 0
     failures: list[tuple[str, str, str]] = []
+    results: list[tuple[dict, str]] = []
     for comment in state.get("comments", []):
         if comment.get("status") in ("dropped", "posted"):
             continue
         checked += 1
         anchor = comment.get("anchor") or {}
         status, detail = verify_anchors.verify_anchor(anchor, ranges, root, head)
-        if status == "ok":
-            refresh_anchor(anchor, root, head)
-        else:
+        results.append((comment, status))
+        if status != "ok":
             failures.append((comment["id"], status, detail))
         print(
             f"{comment['id']:<4} {comment.get('status', ''):<9} {status:<11} "
@@ -875,7 +979,18 @@ def cmd_verify(args: argparse.Namespace) -> int:
             print(f"     {detail}")
 
     if not failures:
+        # Refresh only after every anchor passes: a partial refresh would stamp
+        # some anchors with the new HEAD while the state's HEAD stays old, and
+        # the footer would report a misleading verified count.
+        for comment, status in results:
+            if status == "ok":
+                refresh_anchor(
+                    comment.get("anchor") or {}, root, head, rename_map
+                )
         state["mr"]["headSha"] = head
+        diff_refs = state["mr"].get("diffRefs")
+        if isinstance(diff_refs, dict):
+            diff_refs["head_sha"] = head
         add_event(state, "verified", f"{checked} anchors at {head[:7]}")
     save_state(state_path, state)
 
@@ -1024,14 +1139,37 @@ def cmd_approve(args: argparse.Namespace) -> int:
 def cmd_drop(args: argparse.Namespace) -> int:
     state_path = resolve_state_file(args.state)
     state = load_state(state_path)
-    comment = find_comment(state, args.cid)
-    if comment.get("status") == "posted":
-        raise ScriptError(f"{comment['id']} is posted and cannot be dropped.")
-    comment["status"] = "dropped"
-    comment["dropReason"] = args.reason.strip()
-    add_event(state, "dropped", f"{comment['id']}: {args.reason.strip()}")
+    reason = (args.reason or "").strip()
+
+    if args.cid and args.claim is not None:
+        raise ScriptError(
+            "pass either an existing comment ID or --claim, never both."
+        )
+    claim = (args.claim or "").strip()
+    if not args.cid and not claim:
+        raise ScriptError(
+            'pass an existing comment ID, or --claim "<candidate>" with --reason.'
+        )
+    if args.cid and args.source is not None:
+        raise ScriptError("--source only applies when recording a --claim candidate.")
+
+    if args.cid:
+        comment = find_comment(state, args.cid)
+        if comment.get("status") == "posted":
+            raise ScriptError(f"{comment['id']} is posted and cannot be dropped.")
+        comment["status"] = "dropped"
+        comment["dropReason"] = reason
+        add_event(state, "dropped", f"{comment['id']}: {reason}")
+        save_state(state_path, state)
+        print(f"{comment['id']}  dropped  {comment.get('title', '')}")
+        return 0
+
+    state.setdefault("dropped", []).append(
+        {"claim": claim, "reason": reason, "source": args.source or "conversation"}
+    )
+    add_event(state, "dropped", f"candidate: {claim}")
     save_state(state_path, state)
-    print(f"{comment['id']}  dropped  {comment.get('title', '')}")
+    print(f"dropped candidate  {claim}")
     return 0
 
 
@@ -1106,8 +1244,14 @@ def build_parser() -> argparse.ArgumentParser:
     update_parser.add_argument("--evidence")
     update_parser.add_argument("--suggestion-file")
     update_parser.add_argument("--quote")
-    update_parser.add_argument("--long", action="store_true", default=None)
+    update_parser.add_argument("--source", choices=SOURCES)
+    update_parser.add_argument("--decision", choices=DECISIONS)
+    update_parser.add_argument("--confidence", choices=CONFIDENCES)
+    length_group = update_parser.add_mutually_exclusive_group()
+    length_group.add_argument("--long", action="store_true", default=None)
+    length_group.add_argument("--no-long", dest="long", action="store_false")
     update_parser.add_argument("--reanchor", action="store_true")
+    update_parser.add_argument("--kind", choices=ANCHOR_KINDS)
     update_parser.add_argument("--path")
     update_parser.add_argument("--line", type=int)
     update_parser.add_argument("--end-line", type=int)
@@ -1123,9 +1267,14 @@ def build_parser() -> argparse.ArgumentParser:
         "expr", help='e.g. "all", "1, 3", "skip 2", or "2=APPROVE"'
     )
 
-    drop_parser = subparsers.add_parser("drop", help="Drop one comment")
-    drop_parser.add_argument("cid")
+    drop_parser = subparsers.add_parser("drop", help="Drop a comment or a candidate")
+    drop_parser.add_argument("cid", nargs="?", help="Existing comment id, e.g. C3")
     drop_parser.add_argument("--reason", required=True)
+    drop_parser.add_argument("--claim", help="Rejected candidate recorded before certification")
+    drop_parser.add_argument(
+        "--source", choices=SOURCES,
+        help="Where a --claim candidate came from (default: conversation)",
+    )
 
     render_parser = subparsers.add_parser("render", help="Write mr-comments.md")
     render_parser.add_argument(

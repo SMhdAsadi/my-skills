@@ -7,6 +7,31 @@ Each release is tagged `to-mr-comments-v<version>` and published on the [Release
 
 ---
 
+## [2.2.0] - 2026-11-05
+
+### Added
+
+- **Pre-certification drops.** `comments.py drop --claim "..." --reason "..." [--source conversation|diff]` records a candidate rejected during harvest or selection directly into `dropped[]`, so "no comment" stays auditable without hand-editing the state file. `drop <id> --reason "..."` still retires an existing comment; passing both an id and `--claim`, or neither, is an error.
+- **Rename tracking.** The diff parser maps each renamed or copied destination path to its source, and anchors store `oldPath`. Inline payloads send `old_path` from `oldPath` (falling back to `path`), and file payloads add `old_path` only when the file was renamed. Preview stays free of git subprocesses.
+- **`update` field and anchor control.** `--decision`, `--confidence`, `--source`, and mutually exclusive `--long` / `--no-long`, plus `--kind` and MR-level demotion with `--reanchor --kind mr` (or `--reanchor` with no `--path`) when a rebase removes the file from the diff. The comment keeps its id.
+
+### Changed
+
+- **Strict decision and confidence matrix.** `add` and `update` reject `rejected` and `hypothesis` decisions, reject `low` confidence on every comment type, require `agreed` for `blocker`, `suggestion`, `follow-up`, and `test-gap`, and allow `open` only on `question`. The error for a rejected candidate points at `drop --claim`.
+- **Verification covers the whole span.** An inline anchor's `line..endLine` must fit inside the file at HEAD and inside a single diff hunk; the hash covers that same span. An empty range list now means "changed, no anchorable new lines" — deleted, binary, or pure-rename — and `file` anchors succeed there without reading the file at HEAD.
+- **MR-level note deduplication.** Live notes are compared against inline, summary (`### <title>`), and raw renderings, so a previously posted MR-level note is detected instead of repeated.
+
+### Fixed
+
+- **Deleted-file file anchors** were rejected as `missing` because the verifier required the file at HEAD before checking the anchor kind.
+- **Renamed files** sent identical `old_path` and `new_path`, which GitLab rejects for renamed diffs.
+- **Out-of-bounds `endLine`** was silently accepted and sliced from the file.
+- **HEAD drift.** `add` and `update` stamped the new HEAD while `mr.headSha` stayed old, rendering `0/N anchors verified`; they now refuse until `verify` runs. A clean `verify` updates both `mr.headSha` and `mr.diffRefs.head_sha`.
+- **Deduplication gaps.** Dropped comments blocked a replacement at the same anchor and body; edits skipped duplicate detection entirely. Both are now checked against live comments only.
+- **Outdated docs.** `AGENTS.md`, `SKILL.md`, and the references still described the removed v1 `--create` / `--publish` draft-note gates.
+
+---
+
 ## [2.1.0] - 2026-11-04
 
 ### Changed

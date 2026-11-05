@@ -60,6 +60,8 @@ def build_discussion_payload(comment: dict, state: dict) -> dict | None:
     """Build a discussion payload, or None for an MR-level comment.
 
     The discussions endpoint takes the note text under `body`, not `note`.
+    A renamed file carries both `old_path` and `new_path` so GitLab anchors
+    the discussion on the rename instead of rejecting it.
     """
     anchor = comment.get("anchor") or {}
     kind = anchor.get("kind")
@@ -76,7 +78,7 @@ def build_discussion_payload(comment: dict, state: dict) -> dict | None:
         position.update(
             {
                 "position_type": "text",
-                "old_path": anchor["path"],
+                "old_path": anchor.get("oldPath") or anchor["path"],
                 "new_path": anchor["path"],
                 "new_line": anchor["line"],
             }
@@ -85,6 +87,9 @@ def build_discussion_payload(comment: dict, state: dict) -> dict | None:
         position.update(
             {"position_type": "file", "new_path": anchor["path"]}
         )
+        old_path = anchor.get("oldPath")
+        if old_path and old_path != anchor["path"]:
+            position["old_path"] = old_path
     else:
         return None
     return {
@@ -163,9 +168,11 @@ def similarity(comment: dict, note_body: str) -> float:
     if not note:
         return 0.0
     rendered = normalize_text(comments_cmd.body_for(comment, "inline"))
+    summary = normalize_text(comments_cmd.body_for(comment, "summary"))
     raw = normalize_text(comment.get("body") or "")
     return max(
         difflib.SequenceMatcher(None, rendered, note).ratio(),
+        difflib.SequenceMatcher(None, summary, note).ratio(),
         difflib.SequenceMatcher(None, raw, note).ratio(),
     )
 

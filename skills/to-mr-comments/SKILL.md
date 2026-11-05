@@ -5,7 +5,7 @@ license: MIT
 compatibility: "git >= 2.0; glab >= 1.40 (only for posting)"
 metadata:
   author: SMhd
-  version: "2.1.0"
+  version: "2.2.0"
   tags: [git, gitlab, code-review, merge-requests, developer-tools]
 ---
 
@@ -37,7 +37,7 @@ Resolve the base: the upstream branch, then `main`, `master`, `develop`; only as
 
 **Platform check (hard stop):** confirm the host with `glab auth status --hostname <host>` or `glab api --hostname <host> version`. If `glab` is unavailable, require explicit `--host` and `--project` as the user's assertion. Otherwise:
 
-> `to-mr-comments` is GitLab-only in v1. The remote `<host>` is not a confirmed GitLab instance. Stopping without generating comments.
+> `to-mr-comments` is GitLab-only. The remote `<host>` is not a confirmed GitLab instance. Stopping without generating comments.
 
 Distinguish "not GitLab" (stop) from "GitLab but `glab` missing" (generate offline; posting unavailable).
 
@@ -51,16 +51,27 @@ State lives in a skill-owned subdirectory of a gitignored scratch dir: `$MR_COMM
 
 ## 2. Harvest
 
-Primary source: the conversation. Secondary: `git diff <base>...HEAD`.
+Sources, in order: the conversation, an existing `review-concerns.json`, then `git diff <base>...HEAD`.
+
+A reviewer who just finished a `Review Walkthrough` session leaves `review-concerns.json` in the repository's scratch directory. When it exists, read it before the diff — it already holds `path`/`startLine` refs and investigated findings:
+
+| Concern `status` | Becomes |
+|---|---|
+| `action-needed` | A comment candidate with `decision: agreed` |
+| `open` | A `question` candidate with `decision: open` |
+| `resolved` | A `dropped[]` entry via `comments.py drop --claim ... --reason ...` |
+| `accepted-risk` | A `dropped[]` entry via `comments.py drop --claim ... --reason ...` |
 
 Classify every candidate:
 
 | Decision | Meaning | May become |
 |---|---|---|
 | `agreed` | The user endorsed it. | `blocker`, `suggestion`, or any type |
-| `open` | Unresolved question or trade-off. | `question` |
-| `rejected` | Considered and declined. | Nothing; never resurrect it |
-| `hypothesis` | A hunch without evidence. | `dropped[]` |
+| `open` | Unresolved question or trade-off. | `question` only |
+| `rejected` | Considered and declined. | Nothing; record it with `drop --claim` |
+| `hypothesis` | A hunch without evidence. | Nothing; record it with `drop --claim` |
+
+`add` and `update` refuse `rejected` and `hypothesis` decisions, `low` confidence on every type, and `open` on anything but `question`. The script points at the `drop --claim` form when a candidate cannot become a comment.
 
 Quote the user in `source.quote` — one short line. It is provenance for you and is **never rendered**.
 
@@ -84,12 +95,19 @@ Reject if any:
 
 Then dedupe by root cause or symbol, merge nits into one comment, aim for 5 and never exceed 10. Write every rejected candidate to `dropped[]` with a reason: that is how "no comment" stays auditable. A run that emits nothing is a successful run.
 
+```bash
+python3 scripts/comments.py drop --claim "Uniform LTR enforcement across all players" \
+  --reason "unbounded audit; no anchor" --source conversation
+```
+
+`drop` takes either an existing id (`drop C3 --reason "..."`) or a pre-certification candidate (`--claim`, `--reason`, optional `--source`), never both.
+
 ## 4. Certify
 
 For each survivor:
 
 1. Re-read the target file at HEAD. Read the line, not the diff summary.
-2. Confirm the line is inside `git diff -U3 <base>...HEAD`.
+2. Confirm the line — and the whole `line..endLine` span — is inside one hunk of `git diff -U3 <base>...HEAD`. A file deleted in the MR only carries a `file` anchor.
 3. Write `evidence` as `path:line` plus the fact — a measurement, a command, a URL. "It looks slow" is not evidence.
 4. Add it. The script validates and verifies in the same call:
 
@@ -108,7 +126,11 @@ python3 scripts/comments.py add \
 
 A new comment enters as `pending`. Only `approve` makes it eligible for posting; nothing else moves it.
 
-If verification returns `moved`, `out-of-diff`, or `missing`: re-anchor with `update --reanchor` or `drop` it. Never post around a failed anchor.
+A renamed file is detected from the diff and stored as `anchor.oldPath`, so the discussion payload carries both `old_path` and `new_path` without a second git call at preview time.
+
+`add` and `update` refuse when the repository's live HEAD differs from `mr.headSha`: run `verify` (or `init`) first, so every anchor in the state belongs to one commit. A clean `verify` writes the new HEAD into both `mr.headSha` and `mr.diffRefs.head_sha`.
+
+If verification returns `moved`, `out-of-diff`, or `missing`: re-anchor with `update --reanchor` or `drop` it. Never post around a failed anchor. When a rebase both moves HEAD and takes a file out of the diff, `verify` cannot pass and therefore cannot resync HEAD — run `init` first, then demote the anchor.
 
 ## 5. Emit
 
@@ -140,7 +162,7 @@ python3 scripts/post_comments.py --post --one C2    # a single comment
 
 Order: preview → show the payload list → ask → `approve` → `--post` → show a `#note_<id>` link per comment.
 
-Inline and file anchors become discussions (`POST .../discussions` with `body` and `position`); MR-level comments become notes (`POST .../notes` with `body`). `--post` refuses unless HEAD equals the state HEAD, every selected comment is `approved`, and every anchor verifies at that HEAD. A comment is also refused when a near-identical live discussion already exists: it is skipped and reported, never repeated. Partial posting is limited to `--one`.
+Inline and file anchors become discussions (`POST .../discussions` with `body` and `position`); MR-level comments become notes (`POST .../notes` with `body`). A renamed file carries `old_path` as well as `new_path`. `--post` refuses unless HEAD equals the state HEAD, every selected comment is `approved`, and every anchor verifies at that HEAD. A comment is also refused when a near-identical live note already exists — inline (`**Title**`) or MR-level (`### Title`) — and is skipped and reported, never repeated. Partial posting is limited to `--one`.
 
 If `glab` is unavailable, stop at the `.md`. Do not attempt a workaround or a direct HTTP call.
 
@@ -150,10 +172,16 @@ Stable ids make revision cheap: "shorten C2", "drop C3", "make C1 a question", "
 
 ```bash
 python3 scripts/comments.py update C1 --body-file /tmp/c1-v2.md
+python3 scripts/comments.py update C1 --decision agreed --type blocker --severity correctness
+python3 scripts/comments.py update C1 --no-long
+python3 scripts/comments.py update C2 --reanchor --kind mr         # file left the diff
 python3 scripts/comments.py drop C3 --reason "out of scope for this MR"
+python3 scripts/comments.py drop --claim "Rename the util" --reason "style; covered by linter"
 python3 scripts/comments.py approve "all, skip C3"    # or "1, 3" / "2=APPROVE"
 python3 scripts/comments.py render
 ```
+
+`update` also takes `--decision`, `--confidence`, `--source`, and `--long` / `--no-long`; it re-validates the whole matrix, then runs duplicate detection, so an edit cannot collide with another active comment. Demote an anchor that a rebase moved out of the diff with `--reanchor --kind mr` (or `--reanchor` with no `--path`) and keep its id. If that rebase also moved HEAD, run `init` first: `verify` cannot resync a state whose anchor no longer verifies.
 
 `update` on an approved comment resets it to `pending`, so approval is always explicit. Re-render after every change. Re-run `verify` after any rebase or amend, then `render` again: the footer's SHA is the proof of freshness. After posting, `--one C2` retries a single comment; a batch retry is never implicit.
 
@@ -166,6 +194,9 @@ python3 scripts/comments.py render
 | Empty diff | "No changes to review." Stop. |
 | No `glab` | Offline mode: generate and render; posting is unavailable. |
 | Non-GitLab host | Hard stop per §1. |
+| Deleted file | Use a `file` anchor; inline lines do not exist. |
+| File left the diff after a rebase | Run `init` to resync HEAD, then demote with `update <id> --reanchor --kind mr`. |
+| HEAD moved since init | `verify` first; `add` and `update` refuse until the state matches. |
 | No evidence for a candidate | Drop it; record the reason. |
 
 ---

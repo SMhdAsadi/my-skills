@@ -338,6 +338,56 @@ class AddValidationTests(CliCase):
         self.assertEqual(len(state["comments"]), 11)
         self.assertTrue(state["budget"]["forced"])
 
+    def test_file_anchor_on_a_deleted_file(self):
+        path = self.init_state()
+        self.add(path="gone.txt", line=None, body_text="Why delete this?")
+        anchor = self.state(path)["comments"][0]["anchor"]
+        self.assertEqual(anchor["kind"], "file")
+        self.assertEqual(anchor["path"], "gone.txt")
+        self.assertEqual(anchor["verifiedAt"], self.head)
+
+    def test_renamed_file_anchor_records_old_path(self):
+        path = self.init_state()
+        self.add(path="renamed.txt", line=None, body_text="Rename note.")
+        anchor = self.state(path)["comments"][0]["anchor"]
+        self.assertEqual(anchor["oldPath"], "old.txt")
+
+    def test_add_rejects_end_line_past_the_file(self):
+        self.init_state()
+        self.blocked_add(line=3, end_line=99)
+
+    def test_add_rejects_end_line_outside_the_hunk(self):
+        self.init_state()
+        self.blocked_add(line=3, end_line=12)
+
+    def test_add_rejects_rejected_and_hypothesis_decisions(self):
+        self.init_state()
+        for decision in ("rejected", "hypothesis"):
+            with self.subTest(decision=decision):
+                self.blocked_add(decision=decision, confidence="high")
+
+    def test_add_rejects_low_confidence_for_every_type(self):
+        self.init_state()
+        for ctype in ("question", "follow-up", "test-gap"):
+            with self.subTest(ctype=ctype):
+                self.blocked_add(
+                    type=ctype, decision="agreed", confidence="low"
+                )
+
+    def test_add_rejects_open_on_a_non_question(self):
+        self.init_state()
+        for ctype in ("blocker", "suggestion", "follow-up", "test-gap"):
+            with self.subTest(ctype=ctype):
+                self.blocked_add(
+                    type=ctype, decision="open", confidence="high"
+                )
+
+    def test_add_accepts_agreed_question(self):
+        path = self.init_state()
+        self.add(decision="agreed", confidence="high")
+        source = self.state(path)["comments"][0]["source"]
+        self.assertEqual(source["decision"], "agreed")
+
 
 class LifecycleTests(CliCase):
     def comments_for_approval(self):
@@ -424,9 +474,53 @@ class LifecycleTests(CliCase):
         self.init_state()
         self.add()
         with self.assertRaises(_common.ScriptError):
-            comments.main(["update", "C1", "--reanchor"])
-        with self.assertRaises(_common.ScriptError):
             comments.main(["update", "C1", "--path", "a.txt", "--line", "3"])
+
+    def test_reanchor_without_path_demotes_to_mr(self):
+        path = self.init_state()
+        self.add()
+        self.cli("update", "C1", "--reanchor")
+        anchor = self.state(path)["comments"][0]["anchor"]
+        self.assertEqual(anchor["kind"], "mr")
+        self.assertIsNone(anchor["path"])
+        self.assertEqual(anchor["verifiedAt"], self.head)
+
+    def test_reanchor_kind_mr_with_path_is_rejected(self):
+        self.init_state()
+        self.add()
+        with self.assertRaises(_common.ScriptError):
+            comments.main(
+                ["update", "C1", "--reanchor", "--kind", "mr", "--path", "a.txt"]
+            )
+
+    def test_reanchor_kind_file_on_a_renamed_file(self):
+        path = self.init_state()
+        self.add(path="a.txt", line=None, body_text="Renamed body.")
+        self.cli(
+            "update", "C1", "--reanchor", "--kind", "file", "--path", "renamed.txt"
+        )
+        anchor = self.state(path)["comments"][0]["anchor"]
+        self.assertEqual(anchor["kind"], "file")
+        self.assertEqual(anchor["path"], "renamed.txt")
+        self.assertEqual(anchor["oldPath"], "old.txt")
+
+    def test_reanchor_kind_and_line_must_agree(self):
+        self.init_state()
+        self.add()
+        with self.assertRaises(_common.ScriptError):
+            self.cli(
+                "update",
+                "C1",
+                "--reanchor",
+                "--kind",
+                "file",
+                "--path",
+                "a.txt",
+                "--line",
+                "3",
+            )
+        with self.assertRaises(_common.ScriptError):
+            self.cli("update", "C1", "--kind", "mr")
 
     def test_reanchor_to_outside_diff_is_rejected(self):
         self.init_state()
@@ -539,6 +633,186 @@ class LifecycleTests(CliCase):
         message = str(caught.exception)
         self.assertIn("glab api --hostname gitlab.example.com", message)
         self.assertIn("projects/team%2Fapi/merge_requests/7", message)
+
+
+class DropCandidateTests(CliCase):
+    def test_drop_claim_records_a_rejected_candidate(self):
+        path = self.init_state()
+        self.cli(
+            "drop",
+            "--claim",
+            "Uniform LTR enforcement",
+            "--reason",
+            "unbounded audit; no anchor",
+        )
+        state = self.state(path)
+        self.assertEqual(
+            state["dropped"],
+            [
+                {
+                    "claim": "Uniform LTR enforcement",
+                    "reason": "unbounded audit; no anchor",
+                    "source": "conversation",
+                }
+            ],
+        )
+        self.assertTrue(any(event["kind"] == "dropped" for event in state["events"]))
+        self.assertEqual(state["comments"], [])
+
+    def test_drop_claim_source_is_recorded(self):
+        path = self.init_state()
+        self.cli("drop", "--claim", "c1", "--reason", "no evidence", "--source", "diff")
+        self.assertEqual(self.state(path)["dropped"][0]["source"], "diff")
+
+    def test_dropped_candidate_renders_in_the_table_and_footer(self):
+        path = self.init_state()
+        self.cli("drop", "--claim", "Style preference", "--reason", "no consequence")
+        self.cli("render")
+        markdown = (path.parent / "mr-comments.md").read_text(encoding="utf-8")
+        self.assertIn("| Style preference | no consequence |", markdown)
+        self.assertIn("0 comments · 0/0 anchors verified", markdown)
+        self.assertIn("1 dropped", markdown)
+
+    def test_drop_requires_exactly_one_target(self):
+        self.init_state()
+        with self.assertRaises(_common.ScriptError):
+            self.cli("drop", "C1", "--claim", "both", "--reason", "no")
+        with self.assertRaises(_common.ScriptError):
+            self.cli("drop", "--reason", "neither")
+        with self.assertRaises(_common.ScriptError):
+            self.cli("drop", "--claim", "   ", "--reason", "blank")
+
+    def test_drop_source_only_applies_to_a_claim(self):
+        path = self.init_state()
+        self.add()
+        with self.assertRaises(_common.ScriptError):
+            self.cli("drop", "C1", "--reason", "no", "--source", "diff")
+        self.assertEqual(self.state(path)["comments"][0]["status"], "pending")
+
+
+class StateLifecycleTests(CliCase):
+    def test_valid_update_flags_change_decision_and_type_together(self):
+        path = self.init_state()
+        self.add(body_text="Is this guard safe?")
+        self.cli(
+            "update",
+            "C1",
+            "--type",
+            "blocker",
+            "--severity",
+            "correctness",
+            "--decision",
+            "agreed",
+            "--confidence",
+            "high",
+        )
+        comment = self.state(path)["comments"][0]
+        self.assertEqual(comment["type"], "blocker")
+        self.assertEqual(comment["source"]["decision"], "agreed")
+        self.assertEqual(comment["source"]["confidence"], "high")
+
+    def test_update_rejects_rejected_hypothesis_low_and_open_on_non_question(self):
+        self.init_state()
+        self.add()
+        for argv in (
+            ("--decision", "rejected"),
+            ("--decision", "hypothesis"),
+            ("--confidence", "low"),
+            ("--type", "blocker", "--decision", "open"),
+        ):
+            with self.subTest(argv=argv):
+                with self.assertRaises(_common.ScriptError):
+                    self.cli("update", "C1", *argv)
+
+    def test_update_no_long_applies_the_strict_budget(self):
+        path = self.init_state()
+        self.add(body_text="word " * 200, long=True)
+        with self.assertRaises(_common.ScriptError):
+            self.cli("update", "C1", "--no-long")
+        self.cli(
+            "update",
+            "C1",
+            "--no-long",
+            "--body-file",
+            self.body("A much shorter body."),
+        )
+        self.assertFalse(self.state(path)["comments"][0]["long"])
+
+    def test_duplicate_check_runs_on_update(self):
+        self.init_state()
+        self.add(body_text="First body.")
+        self.add(body_text="Second body.", title="Second")
+        with self.assertRaises(_common.ScriptError):
+            self.cli(
+                "update", "C2", "--body-file", self.body("First body.")
+            )
+
+    def test_dropped_comment_does_not_block_a_replacement(self):
+        path = self.init_state()
+        self.add(body_text="Same body.")
+        self.cli("drop", "C1", "--reason", "flawed")
+        self.add(body_text="Same body.")
+        state = self.state(path)
+        self.assertEqual(state["comments"][0]["status"], "dropped")
+        self.assertEqual(state["comments"][1]["status"], "pending")
+
+    def test_duplicate_check_ignores_dropped_comments_on_update(self):
+        path = self.init_state()
+        self.add(body_text="First body.")
+        self.add(body_text="Second body.", title="Second")
+        self.cli("drop", "C1", "--reason", "flawed")
+        self.cli("update", "C2", "--body-file", self.body("First body."))
+        comment = self.state(path)["comments"][1]
+        self.assertEqual(comment["body"], "First body.")
+
+    def test_add_and_update_refuse_when_head_has_drifted(self):
+        self.init_state()
+        self.add()
+        helpers.git(self.root, "commit", "-q", "--allow-empty", "-m", "drift")
+        with self.assertRaises(_common.ScriptError) as caught:
+            self.add(body_text="New body.")
+        self.assertIn("The state is at", str(caught.exception))
+        with self.assertRaises(_common.ScriptError):
+            self.cli("update", "C1", "--title", "New title")
+
+    def test_add_refuses_a_state_without_a_head_sha(self):
+        path = self.init_state()
+        state = self.state(path)
+        del state["mr"]["headSha"]
+        _common.save_state(path, state)
+        with self.assertRaises(_common.ScriptError) as caught:
+            self.add()
+        self.assertIn("no HEAD SHA", str(caught.exception))
+
+    def test_verify_syncs_head_and_diff_refs(self):
+        path = self.init_state()
+        self.add()
+        helpers.git(self.root, "commit", "-q", "--allow-empty", "-m", "drift")
+        new_head = helpers.git(self.root, "rev-parse", "HEAD").stdout.strip()
+        self.assertNotEqual(new_head, self.head)
+        self.cli("verify")
+        state = self.state(path)
+        self.assertEqual(state["mr"]["headSha"], new_head)
+        self.assertEqual(state["mr"]["diffRefs"]["head_sha"], new_head)
+        self.assertEqual(
+            state["comments"][0]["anchor"]["verifiedAt"], new_head
+        )
+
+    def test_verify_does_not_partially_refresh_when_one_anchor_fails(self):
+        path = self.init_state()
+        self.add()
+        self.add(body_text="Second body.", title="Second", path="new.txt", line=1)
+        helpers.git(self.root, "commit", "-q", "--allow-empty", "-m", "drift")
+        state = self.state(path)
+        state["comments"][1]["anchor"]["path"] = "old.txt"
+        state["comments"][1]["anchor"]["line"] = 1
+        _common.save_state(path, state)
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            result = comments.main(["verify"])
+        self.assertEqual(result, 1)
+        saved = self.state(path)
+        self.assertEqual(saved["mr"]["headSha"], self.head)
+        self.assertEqual(saved["comments"][0]["anchor"]["verifiedAt"], self.head)
 
 
 if __name__ == "__main__":

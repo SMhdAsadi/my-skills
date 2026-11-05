@@ -41,10 +41,12 @@ def make_comment(
     body: str = "A body line.",
     path: str = "a.ts",
     line: int | None = 4,
+    old_path: str | None = None,
 ) -> dict:
     anchor = {
         "kind": kind,
         "path": path if kind != "mr" else None,
+        "oldPath": old_path,
         "line": line if kind == "inline" else None,
         "endLine": None,
         "inDiff": True if kind != "mr" else None,
@@ -150,6 +152,35 @@ class PayloadTests(unittest.TestCase):
         self.assertNotIn("new_line", position)
         self.assertNotIn("old_path", position)
 
+    def test_inline_payload_uses_old_path_for_a_rename(self):
+        state = make_state(
+            [make_comment(path="src/new.ts", old_path="src/old.ts")]
+        )
+        position = post_comments.build_discussion_payload(
+            state["comments"][0], state
+        )["position"]
+        self.assertEqual(position["old_path"], "src/old.ts")
+        self.assertEqual(position["new_path"], "src/new.ts")
+
+    def test_file_payload_uses_old_path_for_a_rename(self):
+        state = make_state(
+            [make_comment(kind="file", path="src/new.ts", old_path="src/old.ts")]
+        )
+        position = post_comments.build_discussion_payload(
+            state["comments"][0], state
+        )["position"]
+        self.assertEqual(position["position_type"], "file")
+        self.assertEqual(position["new_path"], "src/new.ts")
+        self.assertEqual(position["old_path"], "src/old.ts")
+
+    def test_inline_payload_falls_back_to_path_without_rename(self):
+        state = make_state([make_comment(path="src/a.ts", old_path="src/old.ts")])
+        state["comments"][0]["anchor"]["oldPath"] = None
+        position = post_comments.build_discussion_payload(
+            state["comments"][0], state
+        )["position"]
+        self.assertEqual(position["old_path"], "src/a.ts")
+
     def test_mr_anchor_produces_a_note_payload(self):
         state = make_state([make_comment(kind="mr")])
         self.assertIsNone(
@@ -178,7 +209,15 @@ class PreviewTests(unittest.TestCase):
     def test_preview_makes_zero_subprocess_calls(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "state.json"
-            _common.save_state(path, make_state([make_comment()]))
+            _common.save_state(
+                path,
+                make_state(
+                    [
+                        make_comment(path="a.ts", old_path="b.ts"),
+                        make_comment(cid="C2", kind="mr", body="MR body."),
+                    ]
+                ),
+            )
             with mock.patch.object(
                 post_comments, "run", side_effect=AssertionError("no subprocess")
             ):
@@ -186,6 +225,7 @@ class PreviewTests(unittest.TestCase):
                     lambda: post_comments.main(["--state", str(path)])
                 )
         self.assertIn("/discussions", output)
+        self.assertIn('"old_path": "b.ts"', output)
         self.assertIn("Preview only", output)
         self.assertNotIn(REMOVED_ENDPOINT, output)
 
@@ -247,6 +287,23 @@ class DedupeTests(unittest.TestCase):
             "system": True,
             "body": post_comments.comments_cmd.body_for(comment, "inline"),
             "position": {"new_path": "a.ts", "new_line": 4},
+        }
+        self.assertIsNone(post_comments.find_duplicate_note(comment, [note]))
+
+    def test_mr_note_with_a_summary_heading_is_a_duplicate(self):
+        comment = make_comment(kind="mr")
+        note = {
+            "id": 99,
+            "body": post_comments.comments_cmd.body_for(comment, "summary"),
+        }
+        self.assertIs(post_comments.find_duplicate_note(comment, [note]), note)
+
+    def test_mr_note_with_a_different_title_is_not_a_duplicate(self):
+        comment = make_comment(kind="mr", title="A title")
+        other = make_comment(kind="mr", title="A completely different title")
+        note = {
+            "id": 99,
+            "body": post_comments.comments_cmd.body_for(other, "summary"),
         }
         self.assertIsNone(post_comments.find_duplicate_note(comment, [note]))
 

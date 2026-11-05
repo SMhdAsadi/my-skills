@@ -1,20 +1,19 @@
 ---
 name: mr-comment-triage
-description: "Triages unresolved GitHub PR / GitLab MR review threads: fetches them, re-anchors each comment against the real code, forms an independent verdict, and proposes a batch action plan for explicit approval before any file, commit, or reply is touched. Use when asked to handle review comments, triage PR feedback, respond to reviewers, or work through an MR's open threads."
+description: "Triages unresolved GitLab MR review threads: fetches them, re-anchors each comment against the real code, forms an independent verdict, and proposes a batch action plan for explicit approval before any file, commit, or reply is touched. Use when asked to handle review comments, triage MR feedback, respond to reviewers, or work through an MR's open threads."
 license: MIT
-compatibility: "git >= 2.0; gh >= 2.40 (GitHub) or glab >= 1.40 (GitLab)"
+compatibility: "git >= 2.0; glab >= 1.40"
 metadata:
   author: SMhd
   version: "1.1.0"
   tags:
     - git
     - code-review
-    - github
     - gitlab
     - triage
 ---
 
-# MR / PR Comment Triage
+# MR Comment Triage
 
 Reviewer comments are hypotheses, not orders. This skill collects the open threads, checks each claim against the actual codebase, and returns one batch plan. Nothing is edited, committed, or posted until you approve specific items — and replies stay drafts until you say post.
 
@@ -42,7 +41,7 @@ Use when review comments already exist and need a response.
 
 ## 1. Locate the target
 
-Order: URL or number the user gave → current branch's MR/PR → ask.
+Order: URL or number the user gave → current branch's MR → ask.
 
 The fetcher reads the git remote, so self-hosted GitLab needs no extra flags. Override with `--repo` / `--host` / `--number` when the branch is not the source of truth.
 
@@ -52,7 +51,7 @@ Commands below are relative to this skill's directory.
 
 ```bash
 python3 scripts/fetch_threads.py
-python3 scripts/fetch_threads.py --provider gitlab --host code.example.com \
+python3 scripts/fetch_threads.py --host code.example.com \
   --repo team/api --number 2340
 ```
 
@@ -67,7 +66,7 @@ It prints the state path, the anchor mix, and the author mix, then exits. The st
 
 Never write state into a tracked directory. When the fallback is used, say the path out loud in the briefing.
 
-The fetcher already handles what is easy to get wrong: GitHub through GraphQL `reviewThreads` (`gh pr view --comments` carries no resolution state), GitLab through the discussions REST endpoint (`glab mr note list --state unresolved` is still experimental), system-note filtering, null-`line` fallback, pagination, and staleness.
+The fetcher already handles what is easy to get wrong: the GitLab discussions REST endpoint (`glab mr note list --state unresolved` is still experimental), system-note filtering, null-`line` fallback, pagination, and staleness.
 
 ## 3. Read the thread list
 
@@ -104,7 +103,7 @@ Severity is separate from verdict: `blocking`, `correctness`, `maintainability`,
 
 ```bash
 python3 scripts/triage_state.py set --item 1 --verdict ACCEPT --severity blocking \
-  --threads gh:PRRT_abc,gh:PRRT_def \
+  --threads gl:abc123,gl:def456 \
   --claim "stdout changes when --verify is omitted" \
   --evidence "pkg/cmd/release/download/download.go:596:early return removed" \
   --action "restore the early return before the verify branch"
@@ -156,7 +155,7 @@ Posting requires `--post`. Resolving requires `--post --resolve`. The script ref
 
 ## 9. Degradation
 
-- No `gh` / `glab` → ask for a pasted thread dump, then run sections 3–6 unchanged.
+- No `glab` → ask for a pasted thread dump, then run sections 3–6 unchanged.
 - Auth failure → report the exact failing command. Do not retry blindly or guess a token.
 - More than ~15 unresolved threads → triage the top 10 by severity and say what was skipped.
 

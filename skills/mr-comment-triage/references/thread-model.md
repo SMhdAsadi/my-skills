@@ -22,9 +22,8 @@ The rule is absolute: **the state file must never appear in `git status`.** A ve
 Filename is stable per target, so re-running the fetcher resumes instead of fragmenting:
 
 ```
-<provider>-<repo-slug>-<number>.json
+gitlab-<repo-slug>-<number>.json
 gitlab-virasty-client-reactnative-2340.json
-github-cli-cli-14783.json
 ```
 
 Re-fetching preserves `items` and appends a `refetched` event. If HEAD moved between fetches, a `head-moved` event and a warning are added — existing verdicts may be stale and must be re-verified, not blindly applied.
@@ -33,15 +32,15 @@ Re-fetching preserves `items` and appends a `refetched` event. If HEAD moved bet
 
 ## Anchors
 
-A comment's position is not always a line. Three kinds, decided once at fetch time so later phases never branch on provider:
+A comment's position is not always a line. Three kinds, decided once at fetch time so later phases never branch on the payload shape:
 
-| Kind | Meaning | Source (GitHub) | Source (GitLab) |
-|---|---|---|---|
-| `inline` | `path` + `line` | `reviewThreads.path` + `line ?? originalLine` | `position.new_path` + `new_line ?? old_line` |
-| `file` | `path`, no line | `path` set, `line` null | `position.new_path` set, both lines null |
-| `mr` | no position at all | `path` null | `position` null (`DiscussionNote`) |
+| Kind | Meaning | Source (GitLab) |
+|---|---|---|
+| `inline` | `path` + `line` | `position.new_path` or `old_path`, plus `new_line` or `old_line` |
+| `file` | `path`, no line | `position.new_path` or `old_path` set, both lines null |
+| `mr` | no position at all | `position` null (`DiscussionNote`) |
 
-`side` is `new` when the anchor sits on the post-change side (`diffSide == RIGHT`, or `new_line` present) and `old` for deletions. A deleted-line comment must be read against the old file, not the new one.
+`side` is `new` when the anchor sits on the post-change side (`new_line` present) and `old` for deletions. A deleted-line comment must be read against the old file, not the new one.
 
 Multi-line comments carry `endLine`; the range start is the anchor `line`.
 
@@ -51,10 +50,7 @@ Multi-line comments carry `endLine`; the range start is the anchor `line`.
 
 `stale: true` means the comment was written against a diff version that is no longer HEAD. It does not mean the comment is wrong — it means the anchor has to be re-resolved before the claim can be judged.
 
-| Provider | Test |
-|---|---|
-| GitHub | `reviewThreads.isOutdated` |
-| GitLab | `note.position.head_sha != mr.diff_refs.head_sha` |
+It is measured as `note.position.head_sha != mr.diff_refs.head_sha`.
 
 A stale thread still gets a verdict. `ALREADY_FIXED` is the common outcome, but not the automatic one.
 
@@ -65,14 +61,14 @@ A stale thread still gets a verdict. `ALREADY_FIXED` is the common outcome, but 
 ```json
 {
   "schemaVersion": 1,
-  "provider": "github",
-  "host": "github.com",
-  "repo": "cli/cli",
+  "provider": "gitlab",
+  "host": "code.ts.co.ir",
+  "repo": "virasty/client-reactnative",
   "target": {
-    "kind": "pr",
-    "number": 14783,
+    "kind": "mr",
+    "number": 2355,
     "title": "release download: add --verify",
-    "url": "https://github.com/cli/cli/pull/14783",
+    "url": "https://code.ts.co.ir/virasty/client-reactnative/-/merge_requests/2355",
     "headSha": "654d851d...",
     "baseSha": "0f1e2d3c..."
   },
@@ -80,8 +76,8 @@ A stale thread still gets a verdict. `ALREADY_FIXED` is the common outcome, but 
   "warnings": [],
   "threads": [
     {
-      "id": "gh:PRRT_kwDODKw3uc6u3y-b",
-      "remoteId": "PRRT_kwDODKw3uc6u3y-b",
+      "id": "gl:6f1c9d2e4a7b8c0d1e2f3a4b5c6d7e8f9a0b1c2d",
+      "remoteId": "6f1c9d2e4a7b8c0d1e2f3a4b5c6d7e8f9a0b1c2d",
       "anchor": {
         "kind": "inline",
         "path": "pkg/cmd/release/download/download.go",
@@ -89,8 +85,8 @@ A stale thread still gets a verdict. `ALREADY_FIXED` is the common outcome, but 
         "endLine": 604,
         "side": "new"
       },
-      "author": "copilot-pull-request-reviewer",
-      "authorKind": "bot",
+      "author": "sara",
+      "authorKind": "human",
       "body": "Requirement: preserve stdout behavior without --verify ...",
       "createdAt": "2026-10-20T09:14:00Z",
       "resolvable": true,
@@ -104,7 +100,7 @@ A stale thread still gets a verdict. `ALREADY_FIXED` is the common outcome, but 
   "items": [
     {
       "n": 1,
-      "threadIds": ["gh:PRRT_kwDODKw3uc6u3y-b"],
+      "threadIds": ["gl:6f1c9d2e4a7b8c0d1e2f3a4b5c6d7e8f9a0b1c2d"],
       "verdict": "ACCEPT",
       "severity": "blocking",
       "claim": "stdout changes when --verify is omitted",
@@ -126,9 +122,9 @@ A stale thread still gets a verdict. `ALREADY_FIXED` is the common outcome, but 
 }
 ```
 
-`remoteId` is what the forge needs to reply: the GraphQL node id on GitHub, the 40-character discussion id on GitLab. `id` is the namespaced key used everywhere else (`gh:` / `gl:`), so a state file can never confuse the two.
+`remoteId` is what GitLab needs to reply: the full 40-character discussion id. `id` is the namespaced key used everywhere else (`gl:`), so a state file can never be confused with another forge.
 
-`authorKind` is `human`, `bot`, `self`, or `unknown`. Bots are classified by GraphQL `__typename == "Bot"`, a `[bot]` / `-bot` / `_bot` suffix, or a known-reviewer list — never dismissed on that basis alone.
+`authorKind` is `human`, `bot`, `self`, or `unknown`. Bots are classified by a `[bot]` / `-bot` / `_bot` suffix or a known-reviewer list — never dismissed on that basis alone.
 
 ---
 

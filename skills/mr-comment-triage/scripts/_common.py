@@ -7,6 +7,7 @@ here so the individual commands stay thin and testable.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -15,7 +16,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 STATE_DIRNAME = "mr-comment-triage"
 
 # Repo-local scratch directories we are willing to use, in preference order.
@@ -27,18 +28,25 @@ CREATABLE_SCRATCH = ".tmp"
 
 VERDICTS = ("ACCEPT", "ALTERNATIVE", "PUSH_BACK", "DEFER", "ALREADY_FIXED", "CLARIFY")
 SEVERITIES = ("blocking", "correctness", "maintainability", "nit")
+CODE_VERDICTS = ("ACCEPT", "ALTERNATIVE")
+NON_CODE_VERDICTS = tuple(verdict for verdict in VERDICTS if verdict not in CODE_VERDICTS)
 NON_EXECUTABLE = ("CLARIFY", "DEFER")
 
 ITEM_STATUSES = (
     "proposed",
     "approved",
-    "rejected",
     "applied",
     "verified",
     "posted",
     "resolved",
     "skipped",
 )
+
+# The fields that carry the approved intent. Changing any of them invalidates a
+# prior approval, because the old "yes" no longer describes what would run.
+MATERIAL_FIELDS = ("verdict", "threadIds", "action", "evidence")
+
+APPROVED_STATES = ("approved", "applied", "verified")
 
 
 class ScriptError(RuntimeError):
@@ -131,8 +139,38 @@ def slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
 
 
-def state_path(directory: Path, provider: str, repo: str, number: int) -> Path:
-    return directory / f"{provider}-{slug(repo)}-{number}.json"
+def state_path(directory: Path, repo: str, number: int) -> Path:
+    return directory / f"gitlab-{slug(repo)}-{number}.json"
+
+
+def resolve_state_file(explicit: str | None, *, must_exist: bool = True) -> Path | None:
+    """Return the state file selected by --state or by the scratch directory.
+
+    With ``must_exist=False`` a missing state file selects the directory instead
+    of failing, so `triage_state.py path` can be the first command in a run.
+    """
+    if explicit:
+        path = Path(explicit).expanduser()
+        if must_exist and not path.exists():
+            raise ScriptError(f"No state file at {path}")
+        return path
+
+    directory, _ = resolve_state_dir()
+    candidates = sorted(
+        path for path in directory.glob("*.json") if not path.name.endswith(".tmp")
+    )
+    if not candidates:
+        if not must_exist:
+            return None
+        raise ScriptError(
+            f"No triage state in {directory}. Run fetch_threads.py first."
+        )
+    if len(candidates) > 1:
+        listing = "\n".join(f"  {path}" for path in candidates)
+        raise ScriptError(
+            "Multiple triage states found; pass --state to disambiguate:\n" + listing
+        )
+    return candidates[0]
 
 
 def load_state(path: Path) -> dict:
@@ -141,7 +179,21 @@ def load_state(path: Path) -> dict:
             f"No triage state at {path}. Run fetch_threads.py first to collect threads."
         )
     with path.open(encoding="utf-8") as handle:
-        return json.load(handle)
+        try:
+            state = json.load(handle)
+        except json.JSONDecodeError as exc:
+            raise ScriptError(
+                f"State file {path} is not valid JSON (line {exc.lineno}, column "
+                f"{exc.colno}). Run fetch_threads.py again to rebuild it."
+            ) from exc
+    version = state.get("schemaVersion")
+    if version != SCHEMA_VERSION:
+        raise ScriptError(
+            f"State file {path} uses schema version {version!r}; this version of "
+            f"mr-comment-triage needs version {SCHEMA_VERSION}. "
+            "Run fetch_threads.py again to rebuild it."
+        )
+    return state
 
 
 def save_state(path: Path, state: dict) -> None:
@@ -157,6 +209,71 @@ def add_event(state: dict, kind: str, detail: str) -> None:
     state.setdefault("events", []).append(
         {"at": now_iso(), "type": kind, "detail": detail}
     )
+
+
+def canonical_json(value) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def approval_hash(item: dict) -> str:
+    """Hash exactly the material intent that approval authorises."""
+    payload = {field: item.get(field) for field in MATERIAL_FIELDS}
+    return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
+
+
+def invalidate_approval(item: dict, reason: str = "") -> str:
+    """Drop the approval revision; executable states fall back to proposed."""
+    if item.get("status") in APPROVED_STATES:
+        item["status"] = "proposed"
+    item["approvedAt"] = None
+    item["approvalHash"] = None
+    return reason
+
+
+def ensure_item_defaults(item: dict) -> dict:
+    """Fill the v2 item fields so older hand-written fixtures stay valid."""
+    defaults = {
+        "threadIds": [],
+        "verdict": None,
+        "severity": "correctness",
+        "claim": "",
+        "evidence": [],
+        "action": "",
+        "replyDraft": "",
+        "status": "proposed",
+        "approvedAt": None,
+        "approvalHash": None,
+        "commitSha": None,
+        "posts": [],
+        "orphaned": False,
+        "missingThreadIds": [],
+        "updatedAt": None,
+    }
+    for field, value in defaults.items():
+        item.setdefault(field, value)
+    return item
+
+
+def refresh_item_status(item: dict) -> str:
+    """Derive posted/resolved once every thread on the item has a post record.
+
+    Partial posting leaves the previous status so the batch stays resumable.
+    """
+    thread_ids = item.get("threadIds") or []
+    if not thread_ids:
+        return item.get("status")
+    posts = {
+        post.get("threadId"): post
+        for post in (item.get("posts") or [])
+        if post.get("threadId")
+    }
+    if not all(thread_id in posts for thread_id in thread_ids):
+        return item.get("status")
+    if all(posts[thread_id].get("resolvedAt") for thread_id in thread_ids):
+        item["status"] = "resolved"
+    else:
+        item["status"] = "posted"
+    return item["status"]
 
 
 def find_item(state: dict, number: int) -> dict:

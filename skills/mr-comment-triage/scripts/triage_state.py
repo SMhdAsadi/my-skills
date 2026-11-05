@@ -8,7 +8,7 @@ Subcommands:
     path      Print the resolved state path
     threads   List fetched threads with their anchors
     set       Create or update one triaged item
-    approve   Parse an approval expression and mark items approved/rejected
+    approve   Parse an approval expression and mark items approved/skipped
     show      Print the current plan
     render    Print the plan as a Markdown table
 """
@@ -16,49 +16,34 @@ Subcommands:
 from __future__ import annotations
 
 import argparse
+import copy
 import re
 import sys
 from pathlib import Path
 
 from _common import (
+    APPROVED_STATES,
     ITEM_STATUSES,
+    MATERIAL_FIELDS,
     NON_EXECUTABLE,
     SEVERITIES,
     VERDICTS,
     ScriptError,
     add_event,
+    approval_hash,
+    ensure_item_defaults,
     find_item,
+    invalidate_approval,
     load_state,
     now_iso,
     resolve_state_dir,
+    resolve_state_file,
     save_state,
 )
 
 SEVERITY_ORDER = {"blocking": 0, "correctness": 1, "maintainability": 2, "nit": 3}
-TERMINAL_STATUSES = {"applied", "verified", "posted", "resolved"}
-
-
-def resolve_state_file(explicit: str | None) -> Path:
-    if explicit:
-        path = Path(explicit).expanduser()
-        if not path.exists():
-            raise ScriptError(f"No state file at {path}")
-        return path
-
-    directory, _ = resolve_state_dir()
-    candidates = sorted(
-        path for path in directory.glob("*.json") if not path.name.endswith(".tmp")
-    )
-    if not candidates:
-        raise ScriptError(
-            f"No triage state in {directory}. Run fetch_threads.py first."
-        )
-    if len(candidates) > 1:
-        listing = "\n".join(f"  {path}" for path in candidates)
-        raise ScriptError(
-            "Multiple triage states found; pass --state to disambiguate:\n" + listing
-        )
-    return candidates[0]
+# Statuses a direct `set --status` may write. Everything else has an owner.
+SETTABLE_STATUSES = ("proposed", "applied", "verified", "skipped")
 
 
 def truncate(text: str | None, width: int = 88) -> str:
@@ -92,9 +77,9 @@ def execution_order(items: list[dict]) -> list[dict]:
 
 
 def cmd_path(args: argparse.Namespace) -> int:
-    path = resolve_state_file(args.state)
+    path = resolve_state_file(args.state, must_exist=False)
     directory, source = resolve_state_dir()
-    print(path)
+    print(path if path is not None else directory)
     print(f"# dir={directory} source={source}", file=sys.stderr)
     return 0
 
@@ -153,19 +138,25 @@ def cmd_set(args: argparse.Namespace) -> int:
     if existing is None:
         if args.verdict is None:
             raise ScriptError(f"Item #{args.item} does not exist yet; pass --verdict.")
-        existing = {
-            "n": args.item,
-            "threadIds": [],
-            "verdict": args.verdict,
-            "severity": args.severity or "correctness",
-            "claim": "",
-            "evidence": [],
-            "action": "",
-            "replyDraft": "",
-            "status": "proposed",
-            "commitSha": None,
-        }
+        existing = ensure_item_defaults({"n": args.item, "verdict": args.verdict})
+        existing["severity"] = args.severity or existing.get("severity") or "correctness"
         state.setdefault("items", []).append(existing)
+    else:
+        ensure_item_defaults(existing)
+
+    if args.status and args.status not in SETTABLE_STATUSES:
+        if args.status == "approved":
+            raise ScriptError(
+                f"Item #{args.item} cannot be set to 'approved' with `set`. "
+                f"Run `triage_state.py approve {args.item}`; it is the only writer "
+                "of an approval and it records the approval hash."
+            )
+        raise ScriptError(
+            f"Item #{args.item} cannot be set to {args.status!r} with `set`. "
+            "Only the reply phase (`post_reply.py`) may mark a thread posted or resolved."
+        )
+
+    before = {field: copy.deepcopy(existing.get(field)) for field in MATERIAL_FIELDS}
 
     if args.verdict:
         if args.verdict not in VERDICTS:
@@ -192,12 +183,60 @@ def cmd_set(args: argparse.Namespace) -> int:
         existing["replyDraft"] = Path(args.reply_file).read_text(encoding="utf-8").strip()
     if args.reply is not None:
         existing["replyDraft"] = args.reply
-    if args.status:
-        if args.status not in ITEM_STATUSES:
-            raise ScriptError(f"--status must be one of {', '.join(ITEM_STATUSES)}")
-        existing["status"] = args.status
     if args.commit:
         existing["commitSha"] = args.commit
+
+    changed = [
+        field for field in MATERIAL_FIELDS if existing.get(field) != before.get(field)
+    ]
+    if changed and (
+        existing.get("status") in APPROVED_STATES
+        or existing.get("approvalHash")
+        or existing.get("approvedAt")
+    ):
+        invalidate_approval(existing, "material edit")
+        add_event(
+            state,
+            "approval-invalidated",
+            f"item #{existing['n']}: {', '.join(changed)} changed",
+        )
+
+    if args.status:
+        current = existing.get("status") or "proposed"
+        target = args.status
+        if target == "proposed":
+            if current in APPROVED_STATES and not changed:
+                invalidate_approval(existing, "reset to proposed")
+                add_event(
+                    state, "approval-invalidated", f"item #{existing['n']}: reset to proposed"
+                )
+            existing["status"] = "proposed"
+            existing["approvedAt"] = None
+            existing["approvalHash"] = None
+        elif target == "applied":
+            if current != "approved":
+                raise ScriptError(
+                    f"Item #{existing['n']} is {current!r}; only an approved item can "
+                    "move to 'applied'. Run `triage_state.py approve` first."
+                )
+            existing["status"] = "applied"
+        elif target == "verified":
+            if current not in ("approved", "applied"):
+                raise ScriptError(
+                    f"Item #{existing['n']} is {current!r}; only an approved or applied "
+                    "item can move to 'verified'. Run `triage_state.py approve` first."
+                )
+            existing["status"] = "verified"
+        elif target == "skipped":
+            if current not in ("proposed", "approved"):
+                raise ScriptError(
+                    f"Item #{existing['n']} is {current!r}; only a proposed or approved "
+                    "item can be skipped."
+                )
+            if current == "approved":
+                invalidate_approval(existing, "skipped")
+            existing["status"] = "skipped"
+            add_event(state, "skipped", f"item #{existing['n']}")
 
     existing["updatedAt"] = now_iso()
     state["items"] = sorted(state["items"], key=lambda item: item["n"])
@@ -209,48 +248,56 @@ def cmd_set(args: argparse.Namespace) -> int:
 def parse_approval(expression: str, items: list[dict]) -> tuple[list[int], list[int], dict[int, str]]:
     """Parse an approval expression into (approved, skipped, overrides).
 
-    Accepts: "all", "1, 3", "skip 2", "2=ACCEPT", "3:alternative".
+    Accepts: "all", "1, 3", "skip 2", "2=ACCEPT", "3:alternative", and "and"
+    between item numbers.
     """
-    text = expression.lower().strip()
-    text = re.sub(r"^(approve|approved|ok|yes)\b[:,]?\s*", "", text)
+    text = expression.strip()
+    text = re.sub(r"^(?:approve|approved|ok|yes)\b[:,]?\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\band\b", ",", text, flags=re.IGNORECASE)
     tokens = [token for token in re.split(r"[,\s;]+", text) if token]
+    if not tokens:
+        raise ScriptError("Empty approval expression.")
 
     known = {item["n"] for item in items}
     overrides: dict[int, str] = {}
     selected: set[int] = set()
     skipped: set[int] = set()
     everything = False
+    explicit = False
 
     index = 0
     while index < len(tokens):
         token = tokens[index]
-        if token in ("all", "everything", "*"):
+        lowered = token.lower()
+        if lowered in ("all", "everything", "*"):
             everything = True
-        elif token in ("skip", "except", "without"):
+        elif lowered in ("skip", "except", "without"):
             index += 1
             if index >= len(tokens) or not tokens[index].lstrip("#").isdigit():
                 raise ScriptError(f"'skip' needs an item number in {expression!r}")
             skipped.add(int(tokens[index].lstrip("#")))
-        elif re.fullmatch(r"#?-?\d+=.+", token):
-            number, _, verdict = token.partition("=")
-            number_int = int(number.lstrip("#-"))
+        elif re.fullmatch(r"#?\d+\s*[=:]\s*\S+", token):
+            number, verdict = re.split(r"\s*[=:]\s*", token, maxsplit=1)
+            number_int = int(number.lstrip("#"))
             verdict_name = verdict.upper().replace("-", "_")
             if verdict_name not in VERDICTS:
                 raise ScriptError(f"Unknown verdict {verdict!r}; expected {', '.join(VERDICTS)}")
             overrides[number_int] = verdict_name
             selected.add(number_int)
-        elif re.fullmatch(r"#?-?\d+", token):
-            number_int = int(token.lstrip("#-"))
-            if token.startswith("-"):
-                skipped.add(number_int)
-            else:
-                selected.add(number_int)
+            explicit = True
+        elif re.fullmatch(r"#?\d+", token):
+            selected.add(int(token.lstrip("#")))
+            explicit = True
+        elif re.fullmatch(r"-\d+", token):
+            skipped.add(int(token[1:]))
         else:
             raise ScriptError(f"Could not parse {token!r} in {expression!r}")
         index += 1
 
-    if everything:
-        selected = set(known)
+    if everything or not explicit:
+        # A bare "skip 2" means "everything except 2".
+        if everything or skipped:
+            selected = set(known)
     selected -= skipped
 
     unknown = (selected | skipped) - known
@@ -274,30 +321,42 @@ def cmd_approve(args: argparse.Namespace) -> int:
 
     executable: list[dict] = []
     held: list[dict] = []
-    rejected: list[dict] = []
+    skipped_items: list[dict] = []
     unapproved: list[dict] = []
+    now = now_iso()
 
     for item in items:
         if item["n"] in approved:
             if item["verdict"] in NON_EXECUTABLE:
+                if item.get("status") == "approved":
+                    invalidate_approval(item, "held")
                 held.append(item)
                 continue
-            if item.get("status") not in TERMINAL_STATUSES:
+            if item.get("status") in ("proposed", "approved", "skipped"):
                 item["status"] = "approved"
+                item["approvedAt"] = now
+                item["approvalHash"] = approval_hash(item)
+                item["updatedAt"] = now
             executable.append(item)
         elif item["n"] in skipped:
-            if item.get("status") not in TERMINAL_STATUSES:
+            if item.get("status") in ("proposed", "approved"):
+                if item.get("status") == "approved":
+                    invalidate_approval(item, "skipped")
                 item["status"] = "skipped"
-            rejected.append(item)
+                item["updatedAt"] = now
+                add_event(state, "skipped", f"item #{item['n']} via approve")
+            skipped_items.append(item)
         elif item.get("status") == "approved":
-            item["status"] = "proposed"
+            invalidate_approval(item, "unapproved")
+            item["updatedAt"] = now
             unapproved.append(item)
 
     add_event(
         state,
         "approved",
         f"approved={[i['n'] for i in executable]} "
-        f"skipped={[i['n'] for i in rejected]} "
+        f"held={[i['n'] for i in held]} "
+        f"skipped={[i['n'] for i in skipped_items]} "
         f"unapproved={[i['n'] for i in unapproved]}",
     )
 
@@ -319,9 +378,9 @@ def cmd_approve(args: argparse.Namespace) -> int:
         for item in held:
             print(f"  #{item['n']}  {item['verdict']}: {truncate(item.get('claim'), 70)}")
 
-    if rejected:
+    if skipped_items:
         print("\nSkipped:")
-        for item in sorted(rejected, key=lambda entry: entry["n"]):
+        for item in sorted(skipped_items, key=lambda entry: entry["n"]):
             print(f"  #{item['n']}  {item['verdict']}")
 
     if unapproved:
@@ -342,7 +401,7 @@ def cmd_show(args: argparse.Namespace) -> int:
     state = load_state(resolve_state_file(args.state))
     target = state.get("target", {})
     print(
-        f"{state.get('provider')}:{state.get('repo')}!{target.get('number')} "
+        f"gitlab:{state.get('repo')}!{target.get('number')} "
         f"@ {str(target.get('headSha'))[:8]}  ({len(state.get('threads', []))} threads)"
     )
     for warning in state.get("warnings") or []:

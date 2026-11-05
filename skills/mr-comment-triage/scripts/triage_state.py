@@ -7,6 +7,7 @@ applied fixes. Nothing here touches the repository.
 Subcommands:
     path      Print the resolved state path
     threads   List fetched threads with their anchors
+    plan      Replace every item from a validated JSON plan document
     set       Create or update one triaged item
     approve   Parse an approval expression and mark items approved/skipped
     show      Print the current plan
@@ -17,14 +18,17 @@ from __future__ import annotations
 
 import argparse
 import copy
+import json
 import re
 import sys
 from pathlib import Path
 
 from _common import (
     APPROVED_STATES,
+    CODE_VERDICTS,
     ITEM_STATUSES,
     MATERIAL_FIELDS,
+    NON_CODE_VERDICTS,
     NON_EXECUTABLE,
     SEVERITIES,
     VERDICTS,
@@ -36,9 +40,11 @@ from _common import (
     invalidate_approval,
     load_state,
     now_iso,
+    repo_root,
     resolve_state_dir,
     resolve_state_file,
     save_state,
+    verify_evidence,
 )
 
 SEVERITY_ORDER = {"blocking": 0, "correctness": 1, "maintainability": 2, "nit": 3}
@@ -74,6 +80,19 @@ def execution_order(items: list[dict]) -> list[dict]:
         items,
         key=lambda item: (SEVERITY_ORDER.get(item.get("severity"), 9), item.get("n", 0)),
     )
+
+
+def render_items(items: list[dict], threads: dict) -> None:
+    if not items:
+        print("No triaged items.")
+        return
+    print("| # | Anchor | Verdict | Severity | Status | Proposed action |")
+    print("|---|---|---|---|---|---|")
+    for item in sorted(items, key=lambda entry: entry["n"]):
+        print(
+            f"| {item['n']} | {anchor_label(item, threads)} | `{item['verdict']}` | "
+            f"{item['severity']} | {item['status']} | {truncate(item.get('action'), 90)} |"
+        )
 
 
 def cmd_path(args: argparse.Namespace) -> int:
@@ -128,6 +147,183 @@ def parse_evidence(entries: list[str]) -> list[dict]:
             }
         )
     return parsed
+
+
+def load_plan_document(source: str) -> list:
+    """Read a plan file and return its raw item list, accepting both shapes."""
+    path = Path(source).expanduser()
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ScriptError(f"Cannot read plan file {path}: {exc.strerror or exc}") from exc
+    try:
+        document = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ScriptError(
+            f"Plan file {path} is not valid JSON (line {exc.lineno}, column {exc.colno})."
+        ) from exc
+
+    if isinstance(document, dict):
+        if "items" not in document:
+            raise ScriptError(
+                f"Plan file {path} must be a JSON array or an object with an 'items' array."
+            )
+        items = document["items"]
+    elif isinstance(document, list):
+        items = document
+    else:
+        raise ScriptError(
+            f"Plan file {path} must be a JSON array or an object with an 'items' array."
+        )
+
+    if not isinstance(items, list):
+        raise ScriptError(f"Plan file {path}: 'items' must be an array.")
+    return items
+
+
+def build_plan_items(state: dict, documents: list, root: Path) -> list[dict]:
+    """Validate a whole plan document and return the replacement item list.
+
+    Nothing here mutates ``state``: any bad item raises before a single write.
+    """
+    known_threads = {thread["id"] for thread in state.get("threads", [])}
+    seen_numbers: set[int] = set()
+    seen_threads: dict[str, int] = {}
+    now = now_iso()
+    items: list[dict] = []
+
+    for position, entry in enumerate(documents, start=1):
+        label = f"Plan item {position}"
+        if not isinstance(entry, dict):
+            raise ScriptError(f"{label} must be a JSON object.")
+
+        number = entry.get("n")
+        if number is None:
+            number = position
+        if type(number) is not int or number < 1:
+            raise ScriptError(f"{label}: 'n' must be a positive integer.")
+        if number in seen_numbers:
+            raise ScriptError(
+                f"{label}: duplicate item number #{number}; every item needs its own 'n'."
+            )
+        seen_numbers.add(number)
+
+        verdict = entry.get("verdict")
+        if verdict not in VERDICTS:
+            shown = "missing" if verdict is None else repr(verdict)
+            raise ScriptError(
+                f"{label}: verdict is {shown}; expected one of {', '.join(VERDICTS)}."
+            )
+
+        severity = entry.get("severity")
+        if severity is None:
+            severity = "correctness"
+        if severity not in SEVERITIES:
+            raise ScriptError(
+                f"{label}: severity {severity!r} is not one of {', '.join(SEVERITIES)}."
+            )
+
+        claim = entry.get("claim")
+        if claim is None:
+            claim = ""
+        if not isinstance(claim, str):
+            raise ScriptError(f"{label}: 'claim' must be a string.")
+
+        raw_threads = entry.get("threadIds")
+        if not isinstance(raw_threads, list) or not raw_threads:
+            raise ScriptError(
+                f"{label}: 'threadIds' is required and must be a non-empty array."
+            )
+        thread_ids: list[str] = []
+        for thread_id in raw_threads:
+            if not isinstance(thread_id, str) or not thread_id.strip():
+                raise ScriptError(f"{label}: every thread id must be a non-empty string.")
+            thread_id = thread_id.strip()
+            if thread_id in thread_ids:
+                continue
+            if thread_id not in known_threads:
+                raise ScriptError(
+                    f"{label}: unknown thread id {thread_id!r}; it is not in the "
+                    "fetched thread list."
+                )
+            if thread_id in seen_threads:
+                raise ScriptError(
+                    f"{label}: thread {thread_id!r} is already answered by item "
+                    f"#{seen_threads[thread_id]}; one thread can only be triaged once."
+                )
+            thread_ids.append(thread_id)
+        for thread_id in thread_ids:
+            seen_threads[thread_id] = number
+
+        if "evidence" not in entry:
+            raise ScriptError(
+                f"{label}: 'evidence' is required; pass an empty list when there is "
+                "no line to cite."
+            )
+        try:
+            evidence = verify_evidence(entry["evidence"], root)
+        except ScriptError as error:
+            raise ScriptError(f"{label}: {error}") from None
+
+        action = entry.get("action")
+        if action is None:
+            action = ""
+        if not isinstance(action, str):
+            raise ScriptError(f"{label}: 'action' must be a string.")
+
+        reply_draft = entry.get("replyDraft")
+        if reply_draft is None:
+            reply_draft = ""
+        if not isinstance(reply_draft, str):
+            raise ScriptError(f"{label}: 'replyDraft' must be a string.")
+
+        if verdict in CODE_VERDICTS and not action.strip():
+            raise ScriptError(
+                f"{label}: verdict {verdict} edits code and needs a non-empty 'action'."
+            )
+        if verdict in NON_CODE_VERDICTS and not reply_draft.strip():
+            raise ScriptError(
+                f"{label}: verdict {verdict} replies without editing code and needs "
+                "a non-empty 'replyDraft'."
+            )
+
+        item = ensure_item_defaults(
+            {
+                "n": number,
+                "threadIds": thread_ids,
+                "verdict": verdict,
+                "severity": severity,
+                "claim": claim,
+                "evidence": evidence,
+                "action": action,
+                "replyDraft": reply_draft,
+            }
+        )
+        item["updatedAt"] = now
+        items.append(item)
+
+    return items
+
+
+def cmd_plan(args: argparse.Namespace) -> int:
+    path = resolve_state_file(args.state)
+    state = load_state(path)
+    documents = load_plan_document(args.from_plan)
+    root = repo_root() or Path.cwd()
+    items = build_plan_items(state, documents, root)
+
+    plan_name = Path(args.from_plan).name
+    if args.dry_run:
+        print(f"Planned {len(items)} item(s) from {plan_name}. (dry run — state not written)")
+        render_items(items, {thread["id"]: thread for thread in state.get("threads", [])})
+        return 0
+
+    state["items"] = items
+    add_event(state, "planned", f"{len(items)} item(s) from {plan_name}")
+    save_state(path, state)
+    print(f"Planned {len(items)} item(s) from {plan_name}.")
+    render_items(items, {thread["id"]: thread for thread in state.get("threads", [])})
+    return 0
 
 
 def cmd_set(args: argparse.Namespace) -> int:
@@ -316,6 +512,24 @@ def cmd_approve(args: argparse.Namespace) -> int:
         raise ScriptError("No triaged items yet. Add them with `set` before approving.")
 
     approved, skipped, overrides = parse_approval(args.expr, items)
+
+    root = repo_root() or Path.cwd()
+    for item in items:
+        if item["n"] not in approved:
+            continue
+        effective_verdict = overrides.get(item["n"], item.get("verdict"))
+        if effective_verdict in NON_EXECUTABLE:
+            # Held back for a decision; it is never executed, so its citations
+            # do not authorise anything yet.
+            continue
+        try:
+            verify_evidence(item.get("evidence") or [], root)
+        except ScriptError as error:
+            raise ScriptError(
+                f"Item #{item['n']} cannot be approved: {error} Fix the evidence with "
+                f"`triage_state.py set --item {item['n']} --evidence path:line` first."
+            ) from None
+
     for number, verdict in overrides.items():
         find_item(state, number)["verdict"] = verdict
 
@@ -423,18 +637,7 @@ def cmd_show(args: argparse.Namespace) -> int:
 def cmd_render(args: argparse.Namespace) -> int:
     state = load_state(resolve_state_file(args.state))
     threads = {thread["id"]: thread for thread in state.get("threads", [])}
-    items = state.get("items", [])
-    if not items:
-        print("No triaged items.")
-        return 0
-
-    print("| # | Anchor | Verdict | Severity | Status | Proposed action |")
-    print("|---|---|---|---|---|---|")
-    for item in sorted(items, key=lambda entry: entry["n"]):
-        print(
-            f"| {item['n']} | {anchor_label(item, threads)} | `{item['verdict']}` | "
-            f"{item['severity']} | {item['status']} | {truncate(item.get('action'), 90)} |"
-        )
+    render_items(state.get("items", []), threads)
     return 0
 
 
@@ -446,6 +649,13 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("path", help="Print the resolved state path")
 
     subparsers.add_parser("threads", help="List fetched threads")
+
+    plan_parser = subparsers.add_parser("plan", help="Replace the plan from a JSON document")
+    plan_parser.add_argument(
+        "--from", dest="from_plan", required=True, metavar="PLAN.json",
+        help="JSON array of items, or an object with an 'items' array",
+    )
+    plan_parser.add_argument("--dry-run", action="store_true")
 
     set_parser = subparsers.add_parser("set", help="Create or update one item")
     set_parser.add_argument("--item", type=int, required=True)
@@ -484,6 +694,7 @@ def main(argv: list[str] | None = None) -> int:
     handlers = {
         "path": cmd_path,
         "threads": cmd_threads,
+        "plan": cmd_plan,
         "set": cmd_set,
         "approve": cmd_approve,
         "show": cmd_show,

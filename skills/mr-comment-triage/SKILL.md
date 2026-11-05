@@ -37,7 +37,7 @@ Use when review comments already exist and need a response.
 2. **Nothing mutates before gate 1**, except that a plan containing only reply-only verdicts may go straight to the gate 2 preview and post. No code is edited, committed, or checked out before approval, and no reply is sent without `--post`.
 3. **Approval is explicit and batched.** Silence, "looks good", or an unrelated follow-up is not approval.
 4. **Never resolve a thread you did not open** without an explicit instruction. `--resolve` closes only `authorKind: self` threads; closing anyone else's needs `--resolve-other`, which is recorded in the state file.
-5. **Clean tree before writing.** `preflight` refuses a dirty tree; run it before the execute phase.
+5. **Clean tree before writing.** `preflight` refuses a dirty tree, and `set --status applied` refuses an item unless a clean preflight was recorded *after* that item was approved. Run `preflight` between `approve` and the execute phase.
 6. **No bypass flag.** There is no force switch on any gate. The only explicit override is `--resolve-other`.
 
 ---
@@ -76,7 +76,7 @@ gitlab-<repo-slug>-<number>.json
 gitlab-team-api-2340.json
 ```
 
-A re-fetch replaces `threads` with the fresh set, keeps `items`, appends events, marks HEAD moves, and orphans any item whose threads disappeared. `--include-resolved` keeps resolved threads for duplicate detection and the summary labels them as `resolved kept`, not unresolved. `--reset` is the deliberate fresh start.
+A re-fetch replaces `threads` with the fresh set, keeps `items`, appends events, marks HEAD moves, and orphans any item whose threads disappeared. Three collector flags are documented on purpose: `--include-resolved` keeps resolved threads for duplicate detection and the summary labels them as `resolved kept`, not unresolved; `--reset` is the deliberate fresh start; `--stdout` prints the assembled state as JSON instead of writing it, for debugging the payload without touching the state file.
 
 The fetcher already handles what is easy to get wrong: the GitLab discussions REST endpoint (`glab mr note list --state unresolved` is still experimental), system-note filtering, null-`line` fallback, pagination, renamed and deleted paths, anchor side, and staleness.
 
@@ -140,7 +140,7 @@ python3 scripts/triage_state.py plan --from /tmp/plan.json
 python3 scripts/triage_state.py render
 ```
 
-`plan --from` validates every item — thread ids, duplicates across items, verdict and severity, evidence syntax and `path:line` at HEAD, action and draft presence — before one atomic write. A bad item rejects the whole document and leaves the state file byte-identical. `--dry-run` prints the table without writing.
+`plan --from` validates every item — thread ids, duplicates across items, verdict and severity, evidence syntax and `path:line` at HEAD, action and draft presence — before one atomic write. A bad item rejects the whole document and leaves the state file byte-identical. `--dry-run` prints the table without writing. Replacing the plan never erases the reply journal: a new plan must still name every thread that already has a post record, and those records are carried onto the new item (without an old approval).
 
 Then reply with:
 
@@ -171,7 +171,7 @@ six calls and two human gates, regardless of thread count:
 
 ### Reply-only fast path
 
-When the plan contains no `ACCEPT` or `ALTERNATIVE` item, Gate 1 has nothing to approve: skip `approve` and go straight to the gate 2 preview and post. Reply-only items still in `proposed` are eligible. If the plan also contains an unapproved code item, the batch refuses and tells you to run Gate 1 — it never mixes an unapproved code edit into a reply batch.
+When the plan contains no `ACCEPT` or `ALTERNATIVE` item, Gate 1 has nothing to approve: skip `approve` and go straight to the gate 2 preview and post. The fast path covers *every* reply-only verdict — `PUSH_BACK`, `DEFER`, `ALREADY_FIXED`, and `CLARIFY` — because none of them edits code. Reply-only items still in `proposed` are eligible. If the plan also contains an unapproved code item, the batch refuses and tells you to run Gate 1 — it never mixes an unapproved code edit into a reply batch. (When Gate 1 does run, `approve all` still holds `CLARIFY` and `DEFER` back as decisions; that is a Gate 1 rule, not an eligibility rule for the reply path.)
 
 ## 7. Execute
 
@@ -179,7 +179,9 @@ When the plan contains no `ACCEPT` or `ALTERNATIVE` item, Gate 1 has nothing to 
 python3 scripts/triage_state.py preflight
 ```
 
-`preflight` runs `git status --porcelain` from the repository root. A dirty tree aborts with the paths in the way; a clean tree is recorded in the event log. Do not start editing until it passes.
+`preflight` runs `git status --porcelain` from the repository root. A dirty tree aborts with the paths in the way and records nothing; a clean tree appends a `preflight-clean` event. Do not start editing until it passes.
+
+The check is enforced, not advisory: `set --status applied` requires a `preflight-clean` event whose timestamp is at or after the item's `approvedAt`. A preflight taken before approval does not authorise an apply, and neither does a dirty preflight (it never writes the event). Run `preflight` after `approve` and before the first `set --status applied`. At `set` time the script does not re-inspect the tree, because the fix being applied is expected to be uncommitted by then.
 
 Order: `blocking` → `correctness` → `maintainability` → `nit`. Group items touching the same file or symbol so the diffs don't fight.
 
@@ -205,6 +207,8 @@ python3 scripts/post_reply.py --all-approved --resolve --post
 ```
 
 The preview lists every selected item, every thread, the exact body, and the resolve decision. The item's stored `replyDraft` is the default body; `--body` and `--body-file` are explicit overrides recorded as `override` on the post. `--body` and `--body-file` are single-item overrides and are refused with `--all-approved`.
+
+A thread may belong to one item only. If two items name the same thread, or a selected thread already has a post record owned by another item, the command refuses before the preview or any external call and names both items.
 
 Posting requires `--post`. Resolving requires `--post --resolve` and closes only threads you authored. To close a reviewer's thread, add `--resolve-other` as a deliberate exception; the state file records a `resolve-override` event naming the thread and its author. Empty bodies and orphaned items are refused. Duplicate thread ids are collapsed at plan time, so one thread can never receive the same reply twice.
 

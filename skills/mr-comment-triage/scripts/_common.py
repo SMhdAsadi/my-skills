@@ -365,3 +365,98 @@ def find_item(state: dict, number: int) -> dict:
         f"Item #{number} does not exist. Triaged items: "
         f"{[i.get('n') for i in state.get('items', [])] or 'none'}"
     )
+
+
+EVIDENCE_PATTERN = re.compile(
+    r"^(?P<path>[^:]+):(?P<line>\d+)(?::(?P<note>.*))?$"
+)
+
+
+def normalize_evidence_entry(entry) -> dict:
+    """Turn a `path:line[:note]` string or a `{path, line, note}` object into a dict."""
+    if isinstance(entry, str):
+        match = EVIDENCE_PATTERN.match(entry.strip())
+        if not match:
+            raise ScriptError(
+                f"Evidence entry {entry!r} is not 'path:line' or 'path:line:note'."
+            )
+        path = match.group("path").strip()
+        if not path:
+            raise ScriptError("Evidence entry needs a non-empty path before ':line'.")
+        line = int(match.group("line"))
+        if line < 1:
+            raise ScriptError(
+                f"Evidence for {path!r} needs a positive integer 'line', got {line}."
+            )
+        return {
+            "path": path,
+            "line": line,
+            "note": (match.group("note") or "").strip(),
+        }
+    if isinstance(entry, dict):
+        path = entry.get("path")
+        line = entry.get("line")
+        note = entry.get("note")
+        if not isinstance(path, str) or not path.strip():
+            raise ScriptError("Evidence object needs a non-empty 'path'.")
+        if type(line) is not int or line < 1:
+            raise ScriptError(
+                f"Evidence for {path.strip()!r} needs a positive integer 'line'."
+            )
+        if note is not None and not isinstance(note, str):
+            raise ScriptError(f"Evidence note for {path.strip()!r} must be a string.")
+        return {"path": path.strip(), "line": line, "note": (note or "").strip()}
+    raise ScriptError(
+        "Each evidence entry must be a 'path:line[:note]' string or a "
+        "{path, line, note} object."
+    )
+
+
+def verify_evidence(entries, root: Path) -> list[dict]:
+    """Normalize evidence and prove every citation exists at HEAD in ``root``.
+
+    Returns the normalized ``[{path, line, note}]`` list so callers can persist
+    exactly what they verified.
+    """
+    if entries is None:
+        raise ScriptError(
+            "Evidence is required; pass an empty list when there is no line to cite."
+        )
+    if not isinstance(entries, list):
+        raise ScriptError(
+            "Evidence must be a list of 'path:line[:note]' strings or "
+            "{path, line, note} objects."
+        )
+
+    root_path = Path(root).resolve()
+    verified = []
+    for entry in entries:
+        parsed = normalize_evidence_entry(entry)
+        relative = Path(parsed["path"])
+        if relative.is_absolute():
+            raise ScriptError(
+                f"Evidence path {parsed['path']!r} must be relative to the repository root."
+            )
+        target = (root_path / relative).resolve()
+        try:
+            target.relative_to(root_path)
+        except ValueError:
+            raise ScriptError(
+                f"Evidence path {parsed['path']!r} is outside the repository at {root_path}."
+            ) from None
+        if not target.exists():
+            raise ScriptError(
+                f"Evidence path {parsed['path']!r} does not exist at HEAD in {root_path}."
+            )
+        if not target.is_file():
+            raise ScriptError(f"Evidence path {parsed['path']!r} is not a file.")
+        text = target.read_text(encoding="utf-8", errors="replace")
+        line_count = len(text.splitlines())
+        if parsed["line"] > line_count:
+            raise ScriptError(
+                f"Evidence {parsed['path']}:{parsed['line']} is past the end of "
+                f"{parsed['path']} ({line_count} lines at HEAD)."
+            )
+        verified.append(parsed)
+    return verified
+

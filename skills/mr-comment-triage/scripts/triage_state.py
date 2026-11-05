@@ -51,6 +51,12 @@ def truncate(text: str | None, width: int = 88) -> str:
     return clean if len(clean) <= width else clean[: width - 1] + "…"
 
 
+def side_suffix(anchor: dict) -> str:
+    """Show which diff side a line anchor refers to (`old` for deletions)."""
+    side = anchor.get("side")
+    return f" ({side})" if side else ""
+
+
 def anchor_label(item: dict, threads: dict) -> str:
     anchors = []
     for thread_id in item.get("threadIds", []):
@@ -59,7 +65,7 @@ def anchor_label(item: dict, threads: dict) -> str:
             continue
         anchor = thread["anchor"]
         if anchor["kind"] == "inline":
-            label = f"`{anchor['path']}:{anchor['line']}`"
+            label = f"`{anchor['path']}:{anchor['line']}{side_suffix(anchor)}`"
         elif anchor["kind"] == "file":
             label = f"`{anchor['path']}`"
         else:
@@ -92,11 +98,12 @@ def cmd_threads(args: argparse.Namespace) -> int:
         return 0
     for thread in threads:
         anchor = thread["anchor"]
-        where = (
-            f"{anchor['path']}:{anchor['line']}"
-            if anchor["kind"] == "inline"
-            else (anchor["path"] or "MR-level")
-        )
+        if anchor["kind"] == "inline":
+            where = f"{anchor['path']}:{anchor['line']}{side_suffix(anchor)}"
+        elif anchor["kind"] == "file":
+            where = anchor["path"] or "MR-level"
+        else:
+            where = "MR-level"
         flags = []
         if thread.get("stale"):
             flags.append("stale")

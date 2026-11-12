@@ -4,20 +4,21 @@
 [![Vercel Skills CLI](https://img.shields.io/badge/Vercel%20Skills-CLI%20Compatible-000000?style=flat-square&logo=vercel&logoColor=white)](https://github.com/vercel-labs/skills)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](../../LICENSE)
 
-A lightweight, high-signal skill for AI coding agents that enforces natural Persian (Farsi) writing, correct orthography (نیم‌فاصله / ZWNJ), tone-register calibration, UI microcopy standards, and the elimination of robotic AI clichés — silently with zero meta-commentary.
+A lightweight, high-signal skill for AI coding agents that makes Persian (Farsi) output sound like a person typed it: conversational by default, correct on نیم‌فاصله (ZWNJ), and free of robotic AI phrasing — silently, with zero meta-commentary.
 
 ---
 
 ## The Problem
 
-When generating Persian text, AI models typically suffer from two distinct failure modes:
+When generating Persian, models fail in three separate ways:
 
-1. **The Prose Sounds Machine-Made:** Models default to stiff, bureaucratic government-office phrasing (کتابی), repetitive copula padding (`می‌باشد`, `به شمار می‌رود`), empty announcements (`لازم به ذکر است که`), generic openers (`در دنیای امروز`), and calqued English passives (`توسط`).
-2. **The Mechanics Betray the Text:** Missing half-spaces/ZWNJ (`میشود` instead of `می‌شود`, `کتاب ها` instead of `کتاب‌ها`), keyboard contamination from Arabic letters (`ي` and `ك`), English quotes (`"..."`), and broken punctuation spacing.
+1. **It sounds like a memo.** Chat replies arrive in written Persian: `می‌باشد`, `شما`, `لازم به ذکر است`, `در نتیجه`, closing offers, and a tidy three-point structure for a two-sentence answer. Grammatically fine, socially wrong.
+2. **It sounds machine-made.** Copula padding, calqued English passives (`توسط`), bureaucratic prepositions (`در خصوص`, `در راستای`), significance inflation (`نقش بسزایی دارد`), and sycophantic openers (`سوال خوبیه!`).
+3. **The mechanics betray it.** Random half-spaces (`میشود`, `کتاب ها`), Arabic keyboard contamination (`ي`, `ك`), and inconsistent forms — `میشه` in one sentence and `می‌شود` in the next.
 
-Most guides attempting to fix this are massive multi-file repositories (~300+ KB) that fill agent context windows and degrade coding performance.
+Most guides that try to fix this are multi-file repositories (~300+ KB) that flood the context window. This skill distills the rules into a compact spec (**~1.3k tokens**, measured) that can live in context on every non-trivial Persian task.
 
-The **`better-persian`** skill (v1.1.0) distills the essential rules into an ultra-compact specification (**~500 tokens**) designed to live in context on non-trivial Persian tasks without degrading reasoning or adding conversational friction.
+**v2.0.0 changed the default.** Earlier versions treated every deliverable as a formal document and produced exactly the memo voice described above. Conversation is now the default; formal Persian is opt-in.
 
 ---
 
@@ -44,56 +45,58 @@ npx skills add SMhdAsadi/my-skills@better-persian --agent claude-code
 
 ---
 
-## Design Principles & Output Contract
+## Design Principles
 
-### Silent Execution (Zero Meta-Commentary)
-AI agents often clutter responses with post-hoc summaries of what they edited or why. `better-persian` binds the agent to emit **only** the finished Persian deliverable. No preambles, no edit changelogs, no lists of applied orthography rules.
+### Conversation Is the Default
+Register is chosen by request, not guessed from the deliverable. Unless the user asks for formal text — or names a formal destination like an office email, a proposal, a paper, or a UI string — the skill writes the way the user talks: `تو`, contractions, short sentences.
 
-### Automatic Activation with Trivial-Response Filtering
-Activates automatically when writing, editing, localizing, or translating non-trivial Persian text, while intentionally bypassing short conversational turns (e.g. *«بله درسته»*, *«آیا می‌خواهید ادامه دهید؟»*).
+### Silent Execution
+The agent emits only the finished Persian text. No preambles, no edit changelogs, no rule summaries — unless asked.
+
+### Light Touch
+The skill fixes what is wrong and leaves the rest alone. A reply that already sounds human is not restyled, shortened, or "improved".
+
+### Word-Level ZWNJ
+A blanket "always put a half-space after می" rule produces `می‌شه`, which nobody types. v2.0.0 keeps the default but carves out a closed list of exceptions that are written joined: `میشه`, `میگم`, `میدم`, `میره`, `میاد`. Half-spaces are non-negotiable everywhere else: plurals, comparatives, compounds, and `بی‌/هم‌`.
+
+### Mirror the User's Vocabulary
+The skill follows the user's own word bank. Someone who says `کامیت` gets `کامیت`; someone who says `commit` gets `commit`. Absent a signal, infrastructure concepts stay English (`cache`, `deploy`, `PR`) and everyday nouns stay Persian (`فایل`, `خطا`, `سرور`). No parenthetical glosses: `کش (Cache)` is itself a tell.
 
 ---
 
 ## What It Enforces
 
-### 1. Register Matching
-Classifies text by the deliverable rather than the prompt's conversational tone:
-* **Formal-but-human (رسمی-انسانی):** Direct, active, modern professional tone (`است/شد/کرد` instead of `می‌باشد`).
-* **Technical & UI Microcopy (رابط کاربری و مستندات فنی):** Concise, imperative button and toast labels, direct active voice without polite fluff.
-* **Administrative (رسمی-اداری):** Standard conventions for formal administrative letters.
-* **Colloquial (محاوره):** Natural spoken rhythms while strictly avoiding the common *he-kasre* error (`ـه` vs. `ِ`).
-* **Academic (علمی):** Measured, objective, and hedged research prose.
+### Conversation (default)
+* `تو`, short sentences, natural contractions.
+* One form per reply — never `میشه` and `می‌شود` in the same answer.
+* No sycophantic openers, no closing offers, no connector chains.
+* Emoji only mirrored from the user.
 
-### 2. De-AI-ing (Eliminating Robot Tells)
-* Bans copula inflation: `می‌باشد`, `گردید`, `به شمار می‌رود` $\rightarrow$ `است`, `شد`.
-* Cuts ceremonial filler: `لازم به ذکر است`, `شایان ذکر است`, `باید خاطرنشان کرد`.
-* Strips significance inflation: `نقش بسزایی دارد`, `از اهمیت ویژه‌ای برخوردار است`.
-* Eliminates cliché openers: `در دنیای امروز`, `در عصر حاضر`.
-* Fixes «در راستای» abuse: Replaced with `برای` or active action verbs.
-* Eliminates calqued passives: `توسط سرور اجرا شد` $\rightarrow$ `سرور آن را اجرا کرد`.
-* Strips nominal fillers: `به صورت خودکار` $\rightarrow$ `خودکار`.
+### Formal (on request)
+* Written Persian, active voice, `است/شد/کرد`.
+* `هٔ` for ezafe, `←` for RTL flow, imperative UI strings.
+* Standard structure for letters, objective hedging for papers.
 
-### 3. Technical Terminology & BiDi
-* Rejects awkward literal translations of standard tech terms (prefers `وب‌هوک / Webhook`, `کش / Cache`).
-* Enforces single-space insulation before and after English words and inline code in RTL markdown.
-
-### 4. Orthography & Typography
-* **Zero-Width Non-Joiner (ZWNJ / نیم‌فاصله):** Enforced across verb prefixes (`می‌ـ`), plural markers (`ـ‌ها`), comparatives (`ـ‌تر/ـ‌ترین`), compound nouns (`نرم‌افزار`), and clitics.
-* **Persian Glyphs:** Strictly uses Persian `ی` and `ک` (rejects Arabic `ي` and `ك`). Standardizes on `ه‌ی` for ezafe on silent `ه`.
-* **Punctuation & Quotes:** Persian guillemets (`«...»`), Persian question marks (`؟`), and commas (`،`) with standard typographical spacing.
-* **Directional Arrows & Flow:** Enforces leftwards arrow `←` (`U+2190`) for progression and sequential flows in Persian RTL reading order (e.g. `مرحله ۱ ← مرحله ۲`, `لایه پایه ← لایه واسط`). Rejects rightwards arrow `→` in RTL flows as it points backwards to preceding steps.
+### Both
+* Copula inflation, ceremonial filler, bureaucratic prepositions, significance inflation, calqued passives, and empty hype are banned.
+* Persian `ی`/`ک`, `«...»`, and correct comma/question-mark spacing.
+* No invented metrics or customers.
 
 ---
 
 ## Examples
 
-| Before (Generic AI Output) | After (With `better-persian` Skill) |
+| Before (typical AI output) | After (with `better-persian`) |
 | :--- | :--- |
-| این سرویس نقش بسزایی در ارتقای امنیت ایفا نموده و از قابلیت‌های منحصر‌به‌فردی برخوردار می‌باشد. | این سرویس امنیت سیستم را افزایش می‌دهد و قابلیت‌های متعددی دارد. |
-| لازم به ذکر است که پشتیبانی به صورت ۲۴ ساعته ارائه می‌گردد. | پشتیبانی ۲۴ ساعته است. |
-| فایل درخواستی توسط وب‌سرور دانلود گردید. | وب‌سرور فایل درخواستی را دانلود کرد. |
-| لطفاً جهت ذخیره‌سازی داده‌ها بر روی دکمه زیر کلیک نمایید. | ذخیره تغییرات |
-| در دنیای امروز، بهینه‌سازی وب سایت ها از اهمیت ویژه‌ای برخوردار است. | اگر وب‌سایت شما سریع باز نشود، کاربران آن را ترک می‌کنند؛ بهینه‌سازی یعنی همین. |
+| لازم به ذکر است که این تغییر ممکن است باعث بروز خطا در سرویس شود. | این تغییر ممکنه سرویس رو خراب کنه. |
+| می‌شه یه نگاه به لاگ‌ها بندازی؟ | میشه یه نگاه به لاگ‌ها بندازی؟ |
+| نتیجه‌ها را در کش (Cache) نگه دار. | نتیجه‌ها رو توی cache نگه دار. |
+| سوال خوبیه! حتماً کمکت می‌کنم. | آره، اون فایل رو باید قبل از build پاک کنی. |
+| همچنین لازم است تست‌ها را اجرا کنید. علاوه بر این، مستندات را به‌روزرسانی نمایید. | تست‌ها رو هم اجرا کن، مستندات رو هم آپدیت کن. |
+| فایل درخواستی توسط سرور دانلود گردید. | سرور فایل رو دانلود کرد. |
+| مشکل چی‌ست؟ | مشکل چیه؟ |
+
+More pairs, including a formal contrast, live in [`references/examples.md`](references/examples.md).
 
 ---
 

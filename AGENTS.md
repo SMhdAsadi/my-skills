@@ -35,6 +35,7 @@ Skills are versioned independently with SemVer. When a skill's behavior changes 
 | `mr-comment-triage` | "handle review comments", "triage GitLab MR feedback", "respond to reviewers", "work through open threads", "which comments are valid", "approve replies in one batch" | [`skills/mr-comment-triage/SKILL.md`](skills/mr-comment-triage/SKILL.md) |
 | `to-mr-comments` | "write MR comments", "turn findings into comments", "post a review", "record a rejected candidate", "why did we drop that comment" | [`skills/to-mr-comments/SKILL.md`](skills/to-mr-comments/SKILL.md) |
 | `better-persian` | "better-persian", "better persian", "write in persian", "persian copy", "long-form persian", "متن فارسی", "نامه اداری" | [`skills/better-persian/SKILL.md`](skills/better-persian/SKILL.md) |
+| `figma-snapshot` | "figma url", "implement this screen", "inspect a frame", "design system file", "design tokens", "compare with figma" | [`skills/figma-snapshot/SKILL.md`](skills/figma-snapshot/SKILL.md) |
 
 ### `better-persian`
 - **Purpose**: Enforces natural Persian (Farsi) phrasing, register detection, UI microcopy standards, strict orthography (نیم‌فاصله/ZWNJ, Persian glyphs, quotes), and de-AI-ing (stripping robotic bureaucratic clichés).
@@ -55,6 +56,11 @@ Skills are versioned independently with SemVer. When a skill's behavior changes 
 - **Purpose**: Turns a review conversation or branch diff into a small set of verified, copy-pasteable GitLab MR comments. Classifies each finding (`agreed`, `open`, `rejected`, `hypothesis`), applies an explicit selection policy, re-checks anchors at HEAD against `git diff -U3 <base>...HEAD`, dedupes by anchor and body, enforces a 5/10 budget, records rejected candidates in `dropped[]`, and posts them to the merge request after explicit approval.
 - **Activation**: When asked to write MR comments, turn review findings into comments, or post a review. GitLab only, one MR per run, non-GitLab hosts stop before generation.
 - **Contract**: JSON-first (v2.2.0) with `mr-comments-<project>-<iid>.json` in a gitignored scratch dir; the schema, anchor kinds, and decision matrix live in [`references/comment-model.md`](skills/to-mr-comments/references/comment-model.md). `comments.py add` is the only creation path: it verifies the full anchor span against the diff, enforces the decision/confidence matrix (rejected and hypothesis candidates go through `comments.py drop --claim`), and refuses duplicates and a moved HEAD. One publish gate: preview with `post_comments.py`, gate with `comments.py approve`, then `--post` refuses stale state and near-identical existing inline or MR-level notes before any network call.
+
+### `figma-snapshot`
+- **Purpose**: Read-only Figma inspection for agents on a View seat. Turns a frame link into a cached snapshot — a whole-file index, one node subtree, or a rendered image — so the first read costs one REST request and every repeat costs zero.
+- **Activation**: When a task references a Figma URL, a frame or node id, a design-system file, design tokens, or a screen to implement or compare. Prefer it over a live MCP loop when the Figma quota is 20 requests/month.
+- **Contract**: v1.0.0. One stdlib Python CLI (`scripts/figma_snapshot.py`) with `resolve`, `status`, `index`, `node`, `render`, `prune`, and `budget`; global cache under `~/.cache/figma-snapshot` and a per-machine monthly ledger (default 20, `FIGMA_MONTHLY_BUDGET` override). Read-only PAT scopes (`file_content:read`, `file_metadata:read`); no writes, Code Connect, variables API, MCP, or desktop app. Version-aware hits validate through `/v1/files/:key/meta` (Tier 3) and spend Tier-1 only on a miss; `--offline` reads cache without a token, `--dry-run` prices without network. 28 stdlib tests with no network; a 3-request live smoke test is documented in `tests/README.md`.
 
 ## Harness Compatibility Guidelines
 

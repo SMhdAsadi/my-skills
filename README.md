@@ -3,7 +3,7 @@
 [![Agent Skills Standard](https://img.shields.io/badge/Agent%20Skills-Standard-0A84FF?style=flat-square)](https://agentskills.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 
-Skills are instruction packs your AI agent reads when a task matches. No server, no API keys, no configuration — install once and they work in Claude Code, Cursor, Codex, OpenCode, Antigravity, and anything else that reads the [Agent Skills standard](https://agentskills.io).
+Skills are instruction packs your AI agent reads when a task matches. No server, no shared credentials, no configuration — install once and they work in Claude Code, Cursor, Codex, OpenCode, Antigravity, and anything else that reads the [Agent Skills standard](https://agentskills.io). The Figma skill uses a read-only token you create yourself.
 
 ---
 
@@ -43,6 +43,12 @@ Nine review comments, and at least two of them contradict each other. This fetch
 The opposite direction: you have findings, not threads. This turns what you actually agreed on — or what you found in the branch diff — into a small set of GitLab comments that cite the code, sit on a line that still exists, and fit in a thread. It re-checks every anchor at the current commit, collapses duplicates, enforces a budget, and records what it rejected so "no comment" stays auditable. With `glab`, you can stage them as draft notes only you can see, then publish when you're ready.
 
 > *"Turn these findings into MR comments — keep it to five."*
+
+### [Figma snapshot](skills/figma-snapshot/)
+
+The Figma tab is open, the ticket says "match the design," and your seat allows twenty API reads a month. This turns a frame link into a cached snapshot — one request for the node, none for every follow-up — and keeps the design JSON on disk where the agent can query it. Read-only, no desktop app, no MCP.
+
+> *"Implement the empty state from this Figma link."*
 
 ### [Better Persian](skills/better-persian/)
 

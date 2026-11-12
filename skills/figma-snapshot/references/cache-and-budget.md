@@ -38,18 +38,19 @@ Token lives outside the cache at `~/.config/figma-snapshot/token` (or `%APPDATA%
 }
 ```
 
-Each entry's `version` is the file version it was fetched from. A new fetch does not promote old entries; a stale frame stays stale until it is re-read.
+Each entry's `version` is the file version it was fetched from; `fetched_at` drives the 24-hour window. A new fetch does not promote old entries; a stale frame stays stale until it is re-read.
 
 ## Freshness algorithm
 
 1. If the target file is not cached, or `--force`, fetch it (one Tier-1 request).
-2. If cached, call `GET /v1/files/:key/meta` (Tier 3) and compare `version`.
-3. Equal → return the cached file, spend 0.
-4. Different → fetch, replace the entry, spend 1.
-5. `--offline` skips meta and step 2; the cached file is served regardless of age.
-6. A `403` on meta means the token lacks `file_metadata:read`; the error says so. Use `--offline` or add the scope.
+2. If cached and `fetched_at` is less than **24 hours** old, return it immediately — no API call, not even meta. A missing or malformed timestamp counts as stale.
+3. After 24 hours, call `GET /v1/files/:key/meta` (Tier 3) and compare `version`.
+4. Equal → return the cached file, spend 0.
+5. Different → fetch, replace the entry, spend 1.
+6. `--offline` skips the TTL and meta; the cached file is served regardless of age.
+7. A `403` on meta means the token lacks `file_metadata:read`; the error says so. Use `--offline` or add the scope.
 
-Meta is free against Tier 1 but still rate-limited at 10/min on a View seat. A tight loop should hit the cache instead of re-running `node` per turn.
+The 24-hour clock starts at fetch time. A meta check that finds no change does not reset it, so once an entry is older than a day every hit validates through meta until a new fetch replaces the entry. Meta is free against Tier 1 but still rate-limited at 10/min on a View seat.
 
 ## Ledger
 

@@ -6,12 +6,13 @@
 python3 -m unittest discover -s tests -v
 ```
 
-28 tests, stdlib only, no network and no token. They cover:
+35 tests, stdlib only, no network and no token. They cover:
 
 - URL parsing (`design`, `file`, `proto`, `board`, bare keys) and node-id normalization.
 - Cache budget, spend, month rollover, reconciliation, manifest versioning, atomic writes, prune.
 - Index/node summaries, including text extraction.
 - Dry-run, budget exhaustion, offline hits and misses, node-id validation.
+- 24-hour freshness: fresh hits skip meta; stale entries fall back to meta and refetch on a version change.
 - HTTP error mapping (401 → exit 3, 429 → exit 6 with `Retry-After`).
 - CLI `resolve`, `status`, and `budget --set` JSON output.
 

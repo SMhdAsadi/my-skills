@@ -2,6 +2,17 @@
 
 All notable changes to `figma-snapshot` are documented here.
 
+## [1.1.0] - 2026-11-12
+
+### Added
+
+- 24-hour freshness window: a cached index, node, or image is served without any API call for one day; after that, `/meta` version validation resumes.
+
+### Changed
+
+- Render no longer calls `/meta` for a fresh cached image, or for a dry-run miss.
+- 35 tests, including fresh-hit and stale-fallback coverage.
+
 ## [1.0.0] - 2026-11-12
 
 ### Added

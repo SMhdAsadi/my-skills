@@ -102,7 +102,7 @@ Remaining: 19 / 20 · resets 2026-12-01
     └── images/<id>@<scale>x.png
 ```
 
-- **Freshness:** before a repeat, the script calls `/v1/files/:key/meta` (Tier 3, 10/min on a View seat, free) and compares `version`. A changed file misses the cache and costs one request; unchanged files cost zero Tier-1.
+- **Freshness:** a repeat within **24 hours** of the fetch is served from disk with no API call. After 24 hours, the script calls `/v1/files/:key/meta` (Tier 3, 10/min on a View seat, free) and compares `version`. A changed file misses the cache and costs one request; unchanged files cost zero Tier-1.
 - **Versioning:** each index, node, and image entry stores the file version it came from. Fetching a new frame at a new version does not make an old frame look current.
 - **Budget:** the ledger is global per machine and resets on the first of the month. `--offline` still reads cached targets when the budget is 0.
 - **No token needed for cached reads:** `--offline` skips meta and serves the cached file.
@@ -132,7 +132,7 @@ A **Dev seat is $12/mo** on Professional ($25 Org, $35 Enterprise) and is the su
 | :--- | :--- |
 | `Token has expired` | Generate a new PAT; update the env or file. |
 | `403` on a file | The file isn't shared with that account, or the token lacks `file_content:read`. Run `status --whoami`. |
-| `403` only on a repeat | The token lacks `file_metadata:read` (needed for freshness). Add it, or use `--offline`. |
+| `403` on a repeat older than 24 hours | The token lacks `file_metadata:read` (needed for freshness). Add it, or use `--offline`. |
 | `404` | Re-copy the link; file keys and node IDs are easy to truncate. |
 | `429` | Wait `Retry-After`. The error prints `X-Figma-Rate-Limit-Type`, `X-Figma-Plan-Tier`, and the upgrade link. |
 | Budget exhausted | Read `--offline`; raise `budget --set` only with the owner's approval. |
@@ -145,7 +145,7 @@ A **Dev seat is $12/mo** on Professional ($25 Org, $35 Enterprise) and is the su
 python3 -m unittest discover -s tests -v
 ```
 
-28 tests, no network. A live smoke test (3 requests) is documented in [`tests/README.md`](tests/README.md).
+35 tests, no network. A live smoke test (3 requests) is documented in [`tests/README.md`](tests/README.md).
 
 ## License
 

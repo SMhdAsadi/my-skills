@@ -23,12 +23,13 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 API_BASE = "https://api.figma.com"
 DEFAULT_BUDGET = 20
+FRESH_TTL_SECONDS = 24 * 60 * 60
 TOKEN_ENV = "FIGMA_ACCESS_TOKEN"
 CACHE_ENV = "FIGMA_CACHE_HOME"
 BUDGET_ENV = "FIGMA_MONTHLY_BUDGET"
@@ -340,6 +341,22 @@ class Cache:
         self._write_json(self.manifest_path(file_key), manifest)
         return manifest
 
+    def _entry(
+        self,
+        manifest: dict,
+        kind: str,
+        node_id: str | None = None,
+        fmt: str | None = None,
+        scale: float | None = None,
+    ) -> dict:
+        if kind == "index":
+            return manifest.get("index") or {}
+        if kind == "node":
+            return ((manifest.get("nodes") or {}).get(node_id) or {})
+        if kind == "image":
+            return ((manifest.get("images") or {}).get(image_key(node_id, fmt, scale)) or {})
+        return {}
+
     def entry_version(
         self,
         manifest: dict,
@@ -348,13 +365,28 @@ class Cache:
         fmt: str | None = None,
         scale: float | None = None,
     ) -> str | None:
-        if kind == "index":
-            return (manifest.get("index") or {}).get("version")
-        if kind == "node":
-            return ((manifest.get("nodes") or {}).get(node_id) or {}).get("version")
-        if kind == "image":
-            return ((manifest.get("images") or {}).get(image_key(node_id, fmt, scale)) or {}).get("version")
-        return None
+        return self._entry(manifest, kind, node_id=node_id, fmt=fmt, scale=scale).get("version")
+
+    def entry_is_fresh(
+        self,
+        manifest: dict,
+        kind: str,
+        node_id: str | None = None,
+        fmt: str | None = None,
+        scale: float | None = None,
+        now: datetime | None = None,
+    ) -> bool:
+        fetched_at = self._entry(manifest, kind, node_id=node_id, fmt=fmt, scale=scale).get("fetched_at")
+        if not fetched_at:
+            return False
+        try:
+            fetched = datetime.fromisoformat(str(fetched_at).replace("Z", "+00:00"))
+        except ValueError:
+            return False
+        if fetched.tzinfo is None:
+            fetched = fetched.replace(tzinfo=timezone.utc)
+        current = now or datetime.now(timezone.utc)
+        return current - fetched < timedelta(seconds=FRESH_TTL_SECONDS)
 
     def index_path(self, file_key: str) -> Path:
         return self.file_dir(file_key) / "index.json"
@@ -569,7 +601,8 @@ class SnapshotService:
 
         cached_version = self.cache.entry_version(manifest, "index")
         if not self.force and path.is_file() and cached_version:
-            if self._meta(target.file_key).get("version") == cached_version:
+            fresh = self.cache.entry_is_fresh(manifest, "index")
+            if fresh or self._meta(target.file_key).get("version") == cached_version:
                 data = self.cache.read_json_file(path)
                 return self._result("index", target, hit=True, spent=0, path=path, data=data, summary=summarize_index(data))
 
@@ -613,7 +646,8 @@ class SnapshotService:
 
         cached_version = self.cache.entry_version(manifest, "node", node_id=target.node_id)
         if not self.force and path.is_file() and cached_version:
-            if self._meta(target.file_key).get("version") == cached_version:
+            fresh = self.cache.entry_is_fresh(manifest, "node", node_id=target.node_id)
+            if fresh or self._meta(target.file_key).get("version") == cached_version:
                 data = self.cache.read_json_file(path)
                 return self._result("node", target, hit=True, spent=0, path=path, data=data, summary=summarize_node(data, target.node_id))
 
@@ -667,13 +701,22 @@ class SnapshotService:
             raise FigmaError("image is not cached and --offline was given", EXIT_TARGET)
 
         cached_version = self.cache.entry_version(manifest, "image", node_id=target.node_id, fmt=fmt, scale=scale)
-        meta = self._meta(target.file_key)
-        if not self.force and path.is_file() and cached_version and meta.get("version") == cached_version:
-            return self._result("image", target, hit=True, spent=0, path=path, data={"format": fmt, "scale": scale}, summary={})
+        meta: dict | None = None
+        if not self.force and path.is_file() and cached_version:
+            fresh = self.cache.entry_is_fresh(
+                manifest, "image", node_id=target.node_id, fmt=fmt, scale=scale
+            )
+            if fresh:
+                return self._result("image", target, hit=True, spent=0, path=path, data={"format": fmt, "scale": scale}, summary={})
+            meta = self._meta(target.file_key)
+            if meta.get("version") == cached_version:
+                return self._result("image", target, hit=True, spent=0, path=path, data={"format": fmt, "scale": scale}, summary={})
 
         if self.dry_run:
             return self._result("image", target, hit=False, spent=1, path=None, data=None, summary={})
 
+        if meta is None:
+            meta = self._meta(target.file_key)
         self.cache.assert_budget()
         payload = self.client().image_urls(target.file_key, target.node_id, fmt, scale)
         if payload.get("err"):

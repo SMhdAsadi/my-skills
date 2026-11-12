@@ -5,7 +5,7 @@ license: MIT
 compatibility: Python 3.10+ and a Figma personal access token with file_content:read and file_metadata:read.
 metadata:
   author: SMhd
-  version: 1.0.0
+  version: 1.1.0
   tags: [figma, design-to-code, rest-api, caching, quota]
 ---
 
@@ -20,7 +20,7 @@ Paths below are relative to this skill's directory (the harness reports it).
 ## Invariants
 
 - **Read-only.** The token needs `file_content:read` and `file_metadata:read`. No write scope, no canvas edits, no Code Connect writes.
-- **Spend once per target.** New node → 1 request. Repeat → 0. The ledger is global per machine.
+- **Spend once per target.** New node → 1 request. Repeats within 24 hours → 0, with no API call. After 24 hours, a free `/meta` check validates the version. The ledger is global per machine.
 - **Cache outside the project.** `~/.cache/figma-snapshot` by default. Never commit design JSON or images.
 - **Read the file, not the API.** After a snapshot, answer follow-ups with `jq`/Python on the cached JSON.
 
@@ -56,6 +56,8 @@ Completion: you know `remaining`. If it is 0, use `--offline` on a cached target
 | Visual check of one frame | `render "<url>" --format png --scale 0.5` | 1 |
 | Repeat any command above | same command | 0 |
 | URL parsing, budget, cache status | `resolve` / `status` / `budget` | 0 |
+
+A cached target is served from disk for **24 hours** after the fetch, with no API call. After 24 hours, the script calls `/meta` (Tier 3, free) and compares the file version: unchanged → 0 Tier-1, changed → 1. `--offline` skips the freshness check entirely.
 
 Add `--json` before the subcommand for machine-readable output; `path` is the cached file.
 

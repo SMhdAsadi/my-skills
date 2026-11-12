@@ -7,6 +7,7 @@ import tempfile
 import unittest
 import urllib.error
 from contextlib import redirect_stdout
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -100,6 +101,24 @@ class CacheTests(unittest.TestCase):
         self.assertEqual(self.cache.entry_version(manifest, "index"), "v1")
         self.assertEqual(self.cache.entry_version(manifest, "node", node_id="1:2"), "v1")
         self.assertEqual(self.cache.entry_version(manifest, "image", node_id="1:2", fmt="png", scale=2.0), "v1")
+
+    def test_entry_freshness(self):
+        self.cache.update_manifest("filekey12345", kind="index", version="v1")
+        manifest = self.cache.manifest("filekey12345")
+        self.assertTrue(self.cache.entry_is_fresh(manifest, "index"))
+        manifest["index"]["fetched_at"] = (
+            datetime.now(timezone.utc) - timedelta(hours=23)
+        ).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        self.cache._write_json(self.cache.manifest_path("filekey12345"), manifest)
+        manifest = self.cache.manifest("filekey12345")
+        self.assertTrue(self.cache.entry_is_fresh(manifest, "index"))
+        manifest["index"]["fetched_at"] = (
+            datetime.now(timezone.utc) - timedelta(hours=25)
+        ).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        self.cache._write_json(self.cache.manifest_path("filekey12345"), manifest)
+        manifest = self.cache.manifest("filekey12345")
+        self.assertFalse(self.cache.entry_is_fresh(manifest, "index"))
+        self.assertFalse(self.cache.entry_is_fresh(manifest, "node", node_id="1:2"))
 
     def test_atomic_write(self):
         path = self.cache.home / "nested" / "data.json"
@@ -228,6 +247,122 @@ class ServiceTests(unittest.TestCase):
         result = service.render(self.target, fmt="png", scale=2.0)
         self.assertTrue(result["hit"])
         self.assertEqual(result["spent"], 0)
+
+    def _age_entry(self, kind, hours, **kwargs):
+        manifest = self.cache.manifest(self.target.file_key)
+        fetched_at = (
+            datetime.now(timezone.utc) - timedelta(hours=hours)
+        ).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        if kind == "index":
+            manifest["index"]["fetched_at"] = fetched_at
+        elif kind == "node":
+            manifest["nodes"][kwargs["node_id"]]["fetched_at"] = fetched_at
+        else:
+            key = fs.image_key(kwargs["node_id"], kwargs["fmt"], kwargs["scale"])
+            manifest["images"][key]["fetched_at"] = fetched_at
+        self.cache._write_json(self.cache.manifest_path(self.target.file_key), manifest)
+
+    def _seed_index(self, hours=0):
+        path = self.cache.index_path(self.target.file_key)
+        self.cache.write_json_file(
+            path,
+            {"name": "Cached", "version": "v1", "document": {"children": []}},
+        )
+        self.cache.update_manifest(self.target.file_key, kind="index", version="v1")
+        if hours:
+            self._age_entry("index", hours)
+
+    def _seed_node(self, hours=0):
+        path = self.cache.node_path(self.target.file_key, self.target.node_id)
+        self.cache.write_json_file(
+            path,
+            {
+                "version": "v1",
+                "nodes": {
+                    self.target.node_id: {
+                        "document": {
+                            "id": self.target.node_id,
+                            "name": "Cached",
+                            "type": "FRAME",
+                            "children": [],
+                        }
+                    }
+                },
+            },
+        )
+        self.cache.update_manifest(self.target.file_key, kind="node", version="v1", node_id=self.target.node_id)
+        if hours:
+            self._age_entry("node", hours, node_id=self.target.node_id)
+
+    def _seed_image(self, hours=0):
+        path = self.cache.image_path(self.target.file_key, self.target.node_id, "png", 2.0)
+        self.cache.write_bytes_file(path, b"png")
+        self.cache.update_manifest(
+            self.target.file_key, kind="image", version="v1", node_id=self.target.node_id, fmt="png", scale=2.0
+        )
+        if hours:
+            self._age_entry("image", hours, node_id=self.target.node_id, fmt="png", scale=2.0)
+
+    def test_fresh_index_skips_meta(self):
+        self._seed_index()
+        service = fs.SnapshotService(self.cache)
+        service._meta = mock.Mock(side_effect=AssertionError("meta must not be called for a fresh entry"))
+        result = service.index(self.target)
+        self.assertTrue(result["hit"])
+        self.assertEqual(result["spent"], 0)
+        service._meta.assert_not_called()
+
+    def test_fresh_node_skips_meta(self):
+        self._seed_node()
+        service = fs.SnapshotService(self.cache)
+        service._meta = mock.Mock(side_effect=AssertionError("meta must not be called for a fresh entry"))
+        result = service.node(self.target)
+        self.assertTrue(result["hit"])
+        self.assertEqual(result["spent"], 0)
+        service._meta.assert_not_called()
+
+    def test_fresh_image_skips_meta(self):
+        self._seed_image()
+        service = fs.SnapshotService(self.cache)
+        service._meta = mock.Mock(side_effect=AssertionError("meta must not be called for a fresh entry"))
+        result = service.render(self.target, fmt="png", scale=2.0)
+        self.assertTrue(result["hit"])
+        self.assertEqual(result["spent"], 0)
+        service._meta.assert_not_called()
+
+    def test_stale_index_checks_meta(self):
+        self._seed_index(hours=25)
+        service = fs.SnapshotService(self.cache)
+        service._meta = mock.Mock(return_value={"version": "v1"})
+        result = service.index(self.target)
+        self.assertTrue(result["hit"])
+        self.assertEqual(result["spent"], 0)
+        service._meta.assert_called_once_with(self.target.file_key)
+
+    def test_stale_image_checks_meta(self):
+        self._seed_image(hours=25)
+        service = fs.SnapshotService(self.cache)
+        service._meta = mock.Mock(return_value={"version": "v1"})
+        result = service.render(self.target, fmt="png", scale=2.0)
+        self.assertTrue(result["hit"])
+        self.assertEqual(result["spent"], 0)
+        service._meta.assert_called_once_with(self.target.file_key)
+
+    def test_stale_changed_index_fetches(self):
+        self._seed_index(hours=25)
+        service = fs.SnapshotService(self.cache)
+        service._meta = mock.Mock(return_value={"version": "v2"})
+        fake_client = mock.Mock()
+        fake_client.file_index.return_value = {
+            "name": "New",
+            "version": "v2",
+            "document": {"children": []},
+        }
+        service.client = mock.Mock(return_value=fake_client)
+        result = service.index(self.target)
+        self.assertFalse(result["hit"])
+        self.assertEqual(result["spent"], 1)
+        self.assertEqual(self.cache.usage()["spent"], 1)
 
 
 class ClientTests(unittest.TestCase):

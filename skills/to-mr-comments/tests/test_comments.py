@@ -202,6 +202,8 @@ class CliCase(helpers.RepoCase, unittest.TestCase):
             "line": "--line",
             "end_line": "--end-line",
             "suggestion_file": "--suggestion-file",
+            "finding_kind": "--finding-kind",
+            "priority": "--priority",
         }
         for key, flag in mapping.items():
             value = values.get(key)
@@ -265,6 +267,25 @@ class AddValidationTests(CliCase):
     def test_inline_not_in_diff_is_rejected(self):
         self.init_state()
         self.blocked_add(line=12)
+
+    def test_repro_requires_bug_or_visible(self):
+        path = self.init_state()
+        repro = self.files / "repro.md"
+        repro.write_text("1. Open the screen.", encoding="utf-8")
+        self.blocked_add(extra=("--repro-file", str(repro)))
+        self.add(
+            finding_kind="bug",
+            extra=("--repro-file", str(repro)),
+        )
+        state = self.state(path)
+        self.assertEqual(state["comments"][-1]["repro"], "1. Open the screen.")
+
+    def test_metadata_flags_are_stored(self):
+        path = self.init_state()
+        self.add(finding_kind="spec-mismatch", priority="non-blocking")
+        comment = self.state(path)["comments"][0]
+        self.assertEqual(comment["kind"], "spec-mismatch")
+        self.assertEqual(comment["priority"], "non-blocking")
 
     def test_blocker_with_open_decision_is_rejected(self):
         self.init_state()

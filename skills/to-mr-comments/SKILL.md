@@ -5,7 +5,7 @@ license: MIT
 compatibility: "git >= 2.0; glab >= 1.40 (only for posting)"
 metadata:
   author: SMhd
-  version: "2.2.0"
+  version: "2.3.0"
   tags: [git, gitlab, code-review, merge-requests, developer-tools]
 ---
 
@@ -114,8 +114,10 @@ For each survivor:
 ```bash
 python3 scripts/comments.py add \
   --type blocker --severity correctness \
+  --finding-kind bug --priority blocking --affects-users \
   --title "Throttle UI-to-JS dispatch in panGesture.onChange" \
   --body-file /tmp/c1.md \
+  --repro-file /tmp/c1-repro.md \
   --evidence "src/components/VSlider/VSlider.tsx:118 fires per pan tick; ~120 calls/s at 120Hz" \
   --source conversation --decision agreed --confidence high \
   --quote "we should throttle this" \
@@ -162,7 +164,7 @@ python3 scripts/post_comments.py --post --one C2    # a single comment
 
 Order: preview → show the payload list → ask → `approve` → `--post` → show a `#note_<id>` link per comment.
 
-Inline and file anchors become discussions (`POST .../discussions` with `body` and `position`); MR-level comments become notes (`POST .../notes` with `body`). A renamed file carries `old_path` as well as `new_path`. `--post` refuses unless HEAD equals the state HEAD, every selected comment is `approved`, and every anchor verifies at that HEAD. A comment is also refused when a near-identical live note already exists — inline (`**Title**`) or MR-level (`### Title`) — and is skipped and reported, never repeated. Partial posting is limited to `--one`.
+Inline and file anchors become discussions (`POST .../discussions` with `body` and `position`); these are resolvable threads with a Resolve button. MR-level comments become notes (`POST .../notes` with `body`) and are not resolvable threads — use an inline or file anchor when a Resolve button is required. A renamed file carries `old_path` as well as `new_path`. `--post` refuses unless HEAD equals the state HEAD, every selected comment is `approved`, and every anchor verifies at that HEAD. A comment is also refused when a near-identical live note already exists — inline (`**Title**`) or MR-level (`### Title`) — and is skipped and reported, never repeated. Partial posting is limited to `--one`.
 
 If `glab` is unavailable, stop at the `.md`. Do not attempt a workaround or a direct HTTP call.
 
@@ -173,6 +175,8 @@ Stable ids make revision cheap: "shorten C2", "drop C3", "make C1 a question", "
 ```bash
 python3 scripts/comments.py update C1 --body-file /tmp/c1-v2.md
 python3 scripts/comments.py update C1 --decision agreed --type blocker --severity correctness
+python3 scripts/comments.py update C1 --finding-kind bug --priority non-blocking
+python3 scripts/comments.py update C1 --affects-users --repro-file /tmp/c1-repro.md
 python3 scripts/comments.py update C1 --no-long
 python3 scripts/comments.py update C2 --reanchor --kind mr         # file left the diff
 python3 scripts/comments.py drop C3 --reason "out of scope for this MR"
@@ -181,7 +185,7 @@ python3 scripts/comments.py approve "all, skip C3"    # or "1, 3" / "2=APPROVE"
 python3 scripts/comments.py render
 ```
 
-`update` also takes `--decision`, `--confidence`, `--source`, and `--long` / `--no-long`; it re-validates the whole matrix, then runs duplicate detection, so an edit cannot collide with another active comment. Demote an anchor that a rebase moved out of the diff with `--reanchor --kind mr` (or `--reanchor` with no `--path`) and keep its id. If that rebase also moved HEAD, run `init` first: `verify` cannot resync a state whose anchor no longer verifies.
+`update` also takes `--decision`, `--confidence`, `--source`, `--finding-kind`, `--priority`, `--affects-users` / `--no-affects-users`, `--repro-file`, and mutually exclusive `--long` / `--no-long`; it re-validates the whole matrix, then runs duplicate detection, so an edit cannot collide with another active comment. Demote an anchor that a rebase moved out of the diff with `--reanchor --kind mr` (or `--reanchor` with no `--path`) and keep its id. If that rebase also moved HEAD, run `init` first: `verify` cannot resync a state whose anchor no longer verifies.
 
 `update` on an approved comment resets it to `pending`, so approval is always explicit. Re-render after every change. Re-run `verify` after any rebase or amend, then `render` again: the footer's SHA is the proof of freshness. After posting, `--one C2` retries a single comment; a batch retry is never implicit.
 
@@ -213,13 +217,18 @@ python3 scripts/comments.py render
 
 Confidence maps to phrasing: **high** is a recommendation, **medium** is a question, **low** is a drop. Severity is separate: `blocking`, `correctness`, `maintainability`, `nit`.
 
-Keep the title under 60 characters and the body under 120 words (250 with `--long`). One comment, one change. If a body needs a second heading, it needs a second comment.
+Three independent labels ride above the prose in one compact line. `finding-kind` answers what the finding is: `bug`, `question`, `spec-mismatch`, `suggestion`, `refactor`, `test-gap`. `priority` answers whether it blocks: `blocking` or `non-blocking`. `affectsUsers` answers whether a user can see it. `severity` keeps its existing technical scale and controls render order; it is not a substitute for priority. All four are optional in state, so older states render unchanged.
+
+A `repro` string is rendered as a `Steps to Reproduce` section only when `finding-kind = bug` or `affectsUsers = true`. The section carries plain numbered steps plus `Expected` / `Actual` lines — no fenced code block; only a native `suggestion` block renders as code in GitLab. `add` rejects a `repro` that has neither trigger. Keep it short and concrete.
+
+Keep the title under 60 characters and the body under 120 words (250 with `--long`). The metadata line and repro section are outside that budget. One comment, one change. If a body needs a second heading, it needs a second comment.
 
 ## Language
 
-Write in the language of the user's first prompt and store it in `lang`.
+Comments are English by default, regardless of the language of the user's prompt. Switch to Persian only when the user explicitly asks for Persian comments in the input prompt; then set `lang=fa` with `init --lang fa`.
 
 - For Persian, load the `better-persian` skill if available. Otherwise apply four rules inline: use ZWNJ (`نیم‌فاصله`), Persian glyphs (`ی`, `ک`), keep Latin identifiers and code in backticks, and never repeat an English translation in parentheses.
+- Localised metadata labels and value names (kind, priority, severity, affects users, steps to reproduce) follow `lang` automatically from the state file.
 - In RTL languages, start every line with a native word so renderers resolve direction correctly.
 - Code, paths, commands, and measurements stay in Latin script even inside RTL prose.
 

@@ -206,6 +206,56 @@ class PersianTests(unittest.TestCase):
             self.assertGreaterEqual(ord(line[0]), 0x0600, line)
 
 
+class MetadataTests(unittest.TestCase):
+    def test_metadata_line_and_repro_order(self):
+        comment = base_comment(
+            type="blocker",
+            severity="correctness",
+            kind="bug",
+            priority="blocking",
+            affectsUsers=True,
+            repro="1. Open the screen.\n\n**Expected:** It loads.\n**Actual:** It crashes.",
+        )
+        block = comments.body_for(comment, "inline")
+        lines = block.split("\n\n")
+        self.assertEqual(lines[0], "**A question**")
+        self.assertEqual(
+            lines[1],
+            "**Kind:** `bug` · **Priority:** `blocking` · "
+            "**Severity:** `correctness` · **Affects users:** `yes`",
+        )
+        self.assertEqual(lines[2], "A body line.")
+        self.assertEqual(lines[3], "**Steps to Reproduce**")
+        self.assertIn("1. Open the screen.", lines[4])
+        self.assertIn("**Expected:** It loads.", block)
+
+    def test_repro_hidden_without_bug_or_visible_flag(self):
+        comment = base_comment(
+            kind="question",
+            affectsUsers=False,
+            repro="1. Press the button.",
+        )
+        self.assertNotIn("Steps to Reproduce", comments.body_for(comment, "inline"))
+
+    def test_persian_metadata_is_localised(self):
+        comment = base_comment(
+            kind="spec-mismatch",
+            priority="non-blocking",
+            severity="nit",
+            affectsUsers=True,
+        )
+        block = comments.body_for(comment, "inline", "fa")
+        self.assertIn("**نوع:** `عدم تطابق با spec`", block)
+        self.assertIn("**اولویت:** `غیرمسدودکننده`", block)
+        self.assertIn("**اهمیت:** `جزئی`", block)
+        self.assertIn("**قابل مشاهده توسط کاربر:** `بله`", block)
+
+    def test_posted_summary_uses_state_language(self):
+        state = load_fixture("fa")
+        output = comments.render_markdown(state, "summary")
+        self.assertNotIn("**Kind:**", output)
+
+
 class SafetyTests(unittest.TestCase):
     def test_source_quote_never_appears(self):
         state = make_state([base_comment()])

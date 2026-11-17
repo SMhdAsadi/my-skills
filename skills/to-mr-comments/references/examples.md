@@ -16,7 +16,18 @@ The inline box is what you paste into a diff thread. The summary box is for an M
 ````markdown
 **Throttle UI-to-JS dispatch in `panGesture.onChange`**
 
+**Kind:** `bug` · **Priority:** `blocking` · **Severity:** `correctness` · **Affects users:** `yes`
+
 Calling `scheduleOnRN` on every pan tick dispatches up to 120 calls/sec at 120Hz. Throttling to 32ms keeps the thumb at native frame rate while cutting bridge traffic by about 75%.
+
+**Steps to Reproduce**
+
+1. Open a post with a media slider.
+2. Drag the thumb quickly from 0 to 100.
+3. Watch the thumb lag behind the finger by roughly two frames.
+
+**Expected:** The thumb tracks the finger.
+**Actual:** It stutters at high tick rates.
 ````
 
 **Summary:**
@@ -25,7 +36,18 @@ Calling `scheduleOnRN` on every pan tick dispatches up to 120 calls/sec at 120Hz
 ### Throttle UI-to-JS dispatch in `panGesture.onChange`
 **Target:** `src/components/VSlider/VSlider.tsx:118-124`
 
+**Kind:** `bug` · **Priority:** `blocking` · **Severity:** `correctness` · **Affects users:** `yes`
+
 Calling `scheduleOnRN` on every pan tick dispatches up to 120 calls/sec at 120Hz. Throttling to 32ms keeps the thumb at native frame rate while cutting bridge traffic by about 75%.
+
+**Steps to Reproduce**
+
+1. Open a post with a media slider.
+2. Drag the thumb quickly from 0 to 100.
+3. Watch the thumb lag behind the finger by roughly two frames.
+
+**Expected:** The thumb tracks the finger.
+**Actual:** It stutters at high tick rates.
 ````
 
 **Why it passes:** unbounded per-frame cost (rule 4), a measured consequence (120 calls/s), and a verified anchor inside the diff. `agreed` + `high` confidence makes it a blocker.

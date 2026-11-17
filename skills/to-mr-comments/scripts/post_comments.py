@@ -92,15 +92,16 @@ def build_discussion_payload(comment: dict, state: dict) -> dict | None:
             position["old_path"] = old_path
     else:
         return None
+    lang = (state.get("lang") or "en")
     return {
-        "body": comments_cmd.body_for(comment, "inline"),
+        "body": comments_cmd.body_for(comment, "inline", lang),
         "position": position,
     }
 
 
 def build_note_payload(comment: dict, state: dict) -> dict:
     """A regular MR note carries no position and takes the text under `body`."""
-    return {"body": comments_cmd.body_for(comment, "summary")}
+    return {"body": comments_cmd.body_for(comment, "summary", state.get("lang") or "en")}
 
 
 def post_endpoint(state: dict, comment: dict) -> str:
@@ -163,12 +164,12 @@ def normalize_text(text: str) -> str:
     return " ".join(text.split())
 
 
-def similarity(comment: dict, note_body: str) -> float:
+def similarity(comment: dict, note_body: str, lang: str = "en") -> float:
     note = normalize_text(note_body)
     if not note:
         return 0.0
-    rendered = normalize_text(comments_cmd.body_for(comment, "inline"))
-    summary = normalize_text(comments_cmd.body_for(comment, "summary"))
+    rendered = normalize_text(comments_cmd.body_for(comment, "inline", lang))
+    summary = normalize_text(comments_cmd.body_for(comment, "summary", lang))
     raw = normalize_text(comment.get("body") or "")
     return max(
         difflib.SequenceMatcher(None, rendered, note).ratio(),
@@ -184,7 +185,7 @@ def note_anchor(note: dict) -> tuple[str | None, int | None]:
     return path, line
 
 
-def find_duplicate_note(comment: dict, notes: list[dict]) -> dict | None:
+def find_duplicate_note(comment: dict, notes: list[dict], lang: str = "en") -> dict | None:
     anchor = comment.get("anchor") or {}
     path = anchor.get("path")
     line = anchor.get("line")
@@ -194,7 +195,7 @@ def find_duplicate_note(comment: dict, notes: list[dict]) -> dict | None:
         note_path, note_line = note_anchor(note)
         if note_path != path or note_line != line:
             continue
-        if similarity(comment, note.get("body") or "") >= 0.9:
+        if similarity(comment, note.get("body") or "", lang) >= 0.9:
             return note
     return None
 
@@ -230,7 +231,9 @@ def glab_json(host: str, method: str, endpoint: str, payload=None):
     input_text = None
     if payload is not None:
         input_text = json.dumps(payload)
-        cmd += ["--input", "-"]
+        # `--input` does not set a content type on every glab build, and GitLab
+        # rejects an empty one with HTTP 415. State it explicitly.
+        cmd += ["--header", "Content-Type: application/json", "--input", "-"]
     try:
         proc = run(cmd, input_text=input_text)
     except ScriptError as error:
@@ -396,7 +399,7 @@ def cmd_post(state_path: Path, state: dict, one: str | None) -> int:
     posted_ids: list[str] = []
     skipped: list[str] = []
     for comment in selected:
-        duplicate = find_duplicate_note(comment, notes)
+        duplicate = find_duplicate_note(comment, notes, state.get("lang") or "en")
         if duplicate:
             comment.setdefault("posted", {}).update(
                 {

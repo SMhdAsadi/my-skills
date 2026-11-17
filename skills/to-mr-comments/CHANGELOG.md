@@ -7,6 +7,21 @@ Each release is tagged `to-mr-comments-v<version>` and published on the [Release
 
 ---
 
+## [2.3.0] - 2026-11-17
+
+### Added
+
+- **Finding labels.** Three optional comment fields render as one compact line above the prose: `kind` (`bug`, `question`, `spec-mismatch`, `suggestion`, `refactor`, `test-gap`), `priority` (`blocking`, `non-blocking`), and `affectsUsers`. `severity` keeps its existing technical scale and render order. `add` and `update` take `--finding-kind`, `--priority`, `--affects-users` / `--no-affects-users`.
+- **Reproduction steps.** `--repro-file` stores plain-text steps; the renderer emits a localised `Steps to Reproduce` section only for `kind = bug` or `affectsUsers = true`. `add` rejects a repro without either trigger. No fenced code block wraps the section; only a native `suggestion` block renders as code in GitLab.
+- **Resolvable threads.** Posting guidance now states that inline and file anchors become GitLab discussions with a Resolve button, while MR-level notes are not threads.
+
+### Changed
+
+- **English by default.** Comments stay in English regardless of the prompt language. Persian requires an explicit request and `init --lang fa`; metadata labels and value names localise from `lang`.
+- **Posted bodies follow state language.** `post_comments.py` passes `lang` into `body_for`, so the posted text matches the rendered copy and dedupe compares like with like.
+
+---
+
 ## [2.2.0] - 2026-11-05
 
 ### Added

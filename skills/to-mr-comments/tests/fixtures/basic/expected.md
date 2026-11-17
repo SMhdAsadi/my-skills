@@ -5,6 +5,8 @@
 ````markdown
 **Throttle UI-to-JS dispatch in `panGesture.onChange`**
 
+**Severity:** `correctness`
+
 Calling `scheduleOnRN` on every pan tick can dispatch up to 120 calls/sec. Throttling to 32ms keeps the thumb at native frame rate while cutting bridge traffic by about 75%.
 ````
 
@@ -14,6 +16,8 @@ Calling `scheduleOnRN` on every pan tick can dispatch up to 120 calls/sec. Throt
 
 ````markdown
 **Should the new flag stay public?**
+
+**Severity:** `maintainability`
 
 The branch adds a public flag that only the slider reads. Is it meant for consumers, or can it stay internal until a second caller needs it?
 ````

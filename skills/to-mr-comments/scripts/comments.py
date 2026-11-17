@@ -32,6 +32,8 @@ from _common import (
     BUDGET_TARGET,
     CONFIDENCES,
     DECISIONS,
+    FINDING_KINDS,
+    PRIORITIES,
     SCHEMA_VERSION,
     SEVERITIES,
     SEVERITY_ORDER,
@@ -349,6 +351,27 @@ def validate_comment(comment: dict, state: dict) -> None:
         raise ScriptError(
             f"severity must be one of {', '.join(SEVERITIES)}, got {severity!r}."
         )
+    kind = comment.get("kind")
+    if kind is not None and kind not in FINDING_KINDS:
+        raise ScriptError(
+            f"kind must be one of {', '.join(FINDING_KINDS)}, got {kind!r}."
+        )
+    priority = comment.get("priority")
+    if priority is not None and priority not in PRIORITIES:
+        raise ScriptError(
+            f"priority must be one of {', '.join(PRIORITIES)}, got {priority!r}."
+        )
+    if "affectsUsers" in comment and not isinstance(comment["affectsUsers"], bool):
+        raise ScriptError("affectsUsers must be true or false.")
+    repro = comment.get("repro")
+    if repro is not None:
+        if not isinstance(repro, str):
+            raise ScriptError("repro must be a string.")
+        if repro.strip() and kind != "bug" and comment.get("affectsUsers") is not True:
+            raise ScriptError(
+                "repro is only rendered for kind=bug or affectsUsers=true; "
+                "set one of them or clear repro."
+            )
 
     title = (comment.get("title") or "").strip()
     if not title:
@@ -481,7 +504,103 @@ def longest_backtick_run(text: str) -> int:
     return max((len(match.group(0)) for match in re.finditer(r"`+", text)), default=0)
 
 
-def body_for(comment: dict, mode: str) -> str:
+# Metadata labels and values per comment language. The state keeps enum codes;
+# only the rendered copy is localised.
+_META_LABELS = {
+    "en": {
+        "kind": "Kind",
+        "priority": "Priority",
+        "severity": "Severity",
+        "affects": "Affects users",
+        "repro": "Steps to Reproduce",
+        "yes": "yes",
+        "no": "no",
+        "values": {
+            "kind": {
+                "bug": "bug",
+                "question": "question",
+                "spec-mismatch": "spec-mismatch",
+                "suggestion": "suggestion",
+                "refactor": "refactor",
+                "test-gap": "test-gap",
+            },
+            "priority": {"blocking": "blocking", "non-blocking": "non-blocking"},
+            "severity": {
+                "blocking": "blocking",
+                "correctness": "correctness",
+                "maintainability": "maintainability",
+                "nit": "nit",
+            },
+        },
+    },
+    "fa": {
+        "kind": "نوع",
+        "priority": "اولویت",
+        "severity": "اهمیت",
+        "affects": "قابل مشاهده توسط کاربر",
+        "repro": "مراحل بازتولید",
+        "yes": "بله",
+        "no": "خیر",
+        "values": {
+            "kind": {
+                "bug": "باگ",
+                "question": "سوال",
+                "spec-mismatch": "عدم تطابق با spec",
+                "suggestion": "پیشنهاد",
+                "refactor": "ریفکتور",
+                "test-gap": "شکاف تست",
+            },
+            "priority": {
+                "blocking": "مسدودکننده",
+                "non-blocking": "غیرمسدودکننده",
+            },
+            "severity": {
+                "blocking": "مسدودکننده",
+                "correctness": "صحت",
+                "maintainability": "نگهداری",
+                "nit": "جزئی",
+            },
+        },
+    },
+}
+
+
+def localised_metadata(comment: dict, lang: str) -> str:
+    """One compact line of labels above the prose; empty when no field is set."""
+    table = _META_LABELS.get(lang, _META_LABELS["en"])
+    values = table["values"]
+    parts = []
+    kind = comment.get("kind")
+    priority = comment.get("priority")
+    severity = comment.get("severity")
+    affects = comment.get("affectsUsers")
+    if kind:
+        parts.append(f"**{table['kind']}:** `{values['kind'].get(kind, kind)}`")
+    if priority:
+        parts.append(
+            f"**{table['priority']}:** `{values['priority'].get(priority, priority)}`"
+        )
+    if severity:
+        parts.append(
+            f"**{table['severity']}:** `{values['severity'].get(severity, severity)}`"
+        )
+    if affects is not None:
+        parts.append(f"**{table['affects']}:** `{table['yes'] if affects else table['no']}`")
+    return " · ".join(parts)
+
+
+def repro_section(comment: dict, lang: str) -> str:
+    """Reproduction steps, only for a bug or a user-visible problem."""
+    repro = (comment.get("repro") or "").strip()
+    if not repro:
+        return ""
+    if comment.get("kind") != "bug" and comment.get("affectsUsers") is not True:
+        return ""
+    table = _META_LABELS.get(lang, _META_LABELS["en"])
+    return f"**{table['repro']}**\n\n{repro}"
+
+
+def body_for(comment: dict, mode: str, lang: str = "en") -> str:
     title = (comment.get("title") or "").strip()
     body = (comment.get("body") or "").strip()
     anchor = comment.get("anchor") or {}
@@ -493,20 +612,26 @@ def body_for(comment: dict, mode: str) -> str:
     else:
         parts = [f"**{title}**"]
 
+    metadata = localised_metadata(comment, lang)
+    if metadata:
+        parts.append(metadata)
     if body:
         parts.append(body)
+    repro = repro_section(comment, lang)
+    if repro:
+        parts.append(repro)
     if comment.get("type") == "suggestion" and (comment.get("suggestion") or "").strip():
         replacement = comment["suggestion"].strip("\n")
         parts.append("```suggestion:-0+0\n" + replacement + "\n```")
     return "\n\n".join(parts)
 
 
-def render_comment(comment: dict, mode: str) -> str:
+def render_comment(comment: dict, mode: str, lang: str = "en") -> str:
     anchor = comment.get("anchor") or {}
     parts = [f"#### {comment.get('id')} · {comment.get('type')} · {anchor_label(anchor)}"]
     if mode == "inline":
         parts.append(f"**Anchor:** `{anchor_label(anchor)}`")
-    block = body_for(comment, mode)
+    block = body_for(comment, mode, lang)
     fence = "`" * max(4, longest_backtick_run(block) + 1)
     parts.append(f"{fence}markdown\n{block}\n{fence}")
     return "\n\n".join(parts)
@@ -548,7 +673,7 @@ def render_markdown(state: dict, mode: str = "inline") -> str:
         else:
             chunks.append("No actionable comments.")
     else:
-        chunks.extend(render_comment(comment, mode) for comment in ordered)
+        chunks.extend(render_comment(comment, mode, state.get("lang", "en")) for comment in ordered)
         if rows:
             chunks.append("**Dropped candidates**")
             chunks.append(dropped_table(rows))
@@ -761,12 +886,18 @@ def cmd_add(args: argparse.Namespace) -> int:
     suggestion = None
     if args.suggestion_file:
         suggestion = Path(args.suggestion_file).read_text(encoding="utf-8").strip("\n")
+    repro = None
+    if args.repro_file:
+        repro = Path(args.repro_file).read_text(encoding="utf-8").strip()
 
     comment = {
         "id": "C0",
         "status": "pending",
         "type": args.type,
         "severity": args.severity,
+        "kind": args.finding_kind,
+        "priority": args.priority,
+        "repro": repro,
         "anchor": anchor,
         "evidence": (args.evidence or "").strip(),
         "source": {
@@ -781,6 +912,8 @@ def cmd_add(args: argparse.Namespace) -> int:
         "long": bool(args.long),
         "posted": {"noteId": None, "discussionId": None, "postedAt": None},
     }
+    if args.affects_users is not None:
+        comment["affectsUsers"] = args.affects_users
     validate_comment(comment, state)
 
     duplicate = find_duplicate(state, comment)
@@ -881,6 +1014,14 @@ def cmd_update(args: argparse.Namespace) -> int:
         comment["body"] = Path(args.body_file).read_text(encoding="utf-8").strip()
     if args.severity is not None:
         comment["severity"] = args.severity
+    if args.finding_kind is not None:
+        comment["kind"] = args.finding_kind
+    if args.priority is not None:
+        comment["priority"] = args.priority
+    if args.affects_users is not None:
+        comment["affectsUsers"] = args.affects_users
+    if args.repro_file:
+        comment["repro"] = Path(args.repro_file).read_text(encoding="utf-8").strip()
     if args.type is not None:
         comment["type"] = args.type
     if args.evidence is not None:
@@ -1232,6 +1373,16 @@ def build_parser() -> argparse.ArgumentParser:
     add_parser.add_argument("--line", type=int, help="Line number for an inline anchor")
     add_parser.add_argument("--end-line", type=int, help="Display-only range end")
     add_parser.add_argument("--suggestion-file", help="Replacement lines for a suggestion")
+    add_parser.add_argument("--finding-kind", choices=FINDING_KINDS)
+    add_parser.add_argument("--priority", choices=PRIORITIES)
+    affects_add = add_parser.add_mutually_exclusive_group()
+    affects_add.add_argument(
+        "--affects-users", dest="affects_users", action="store_true", default=None
+    )
+    affects_add.add_argument(
+        "--no-affects-users", dest="affects_users", action="store_false"
+    )
+    add_parser.add_argument("--repro-file", help="Steps to reproduce, plain text")
     add_parser.add_argument("--long", action="store_true", default=False)
     add_parser.add_argument("--force", action="store_true", help="Exceed the budget")
 
@@ -1243,6 +1394,16 @@ def build_parser() -> argparse.ArgumentParser:
     update_parser.add_argument("--type", choices=TYPES)
     update_parser.add_argument("--evidence")
     update_parser.add_argument("--suggestion-file")
+    update_parser.add_argument("--finding-kind", choices=FINDING_KINDS)
+    update_parser.add_argument("--priority", choices=PRIORITIES)
+    affects_update = update_parser.add_mutually_exclusive_group()
+    affects_update.add_argument(
+        "--affects-users", dest="affects_users", action="store_true", default=None
+    )
+    affects_update.add_argument(
+        "--no-affects-users", dest="affects_users", action="store_false"
+    )
+    update_parser.add_argument("--repro-file", help="Steps to reproduce, plain text")
     update_parser.add_argument("--quote")
     update_parser.add_argument("--source", choices=SOURCES)
     update_parser.add_argument("--decision", choices=DECISIONS)

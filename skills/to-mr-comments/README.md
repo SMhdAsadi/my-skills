@@ -28,6 +28,9 @@ The result is a deterministic `mr-comments.md` with one copy box per comment. Po
 ## Key Features
 
 - **Comment budget** — aim for 5, hard cap 10. `--force` is recorded so a later reader knows the cap was overridden.
+- **Three labels on every finding** — `kind` (bug, question, spec mismatch, suggestion, refactor, test gap), `priority` (blocking / non-blocking), and `affectsUsers` sit above the prose in one line; `severity` stays the technical scale that drives render order.
+- **Reproduction steps when they matter** — a bug or a user-visible problem carries a plain `Steps to Reproduce` section with Expected / Actual; no fenced code block, and only native `suggestion` blocks render as code in GitLab.
+- **Resolvable threads** — inline and file anchors post as GitLab discussions with a Resolve button; MR-level notes are not threads.
 - **Evidence is mandatory** — a `path:line`, a backticked command, a URL, or a measurement with units. "Looks slow" is rejected by the script.
 - **Anchors verified at HEAD** — inline lines and their whole `line..endLine` span must fall inside one diff hunk and inside the file; a hash catches text drift; a moved line is `moved`, never silently accepted.
 - **Three anchor kinds** — `inline`, `file`, and `mr`, so a comment about a deleted, binary, or renamed file still has a home. Renames record the pre-rename path and send both `old_path` and `new_path`.
@@ -106,6 +109,8 @@ Schema, lifecycle, and validation rules: [`references/comment-model.md`](referen
 | `glab` | 1.40+ | Posting comments, including self-hosted GitLab |
 
 No `glab`? Generation and rendering still work; posting stops at the `.md`, and the copy blocks paste cleanly into the GitLab UI.
+
+Comments are English by default, whatever language the prompt used. Set `init --lang fa` only when the user explicitly asks for Persian comments; labels and value names localise automatically.
 
 ---
 

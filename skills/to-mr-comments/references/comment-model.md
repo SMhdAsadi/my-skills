@@ -60,6 +60,10 @@ Re-initialising preserves `comments`, `dropped`, and `events`, updates the `mr` 
       "status": "pending",
       "type": "blocker",
       "severity": "correctness",
+      "kind": "bug",
+      "priority": "blocking",
+      "affectsUsers": true,
+      "repro": "1. Open a post with a media slider.\n2. Drag the thumb quickly.\n\n**Expected:** The thumb tracks the finger.\n**Actual:** It stutters.",
       "anchor": {
         "kind": "inline",
         "path": "src/components/VSlider/VSlider.tsx",
@@ -107,7 +111,7 @@ Re-initialising preserves `comments`, `dropped`, and `events`, updates the `mr` 
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `schemaVersion` | integer | yes | `1`. |
-| `lang` | string | yes | Language of the user's first prompt (`en`, `fa`, …). |
+| `lang` | string | yes | Comment language. `en` by default; `fa` only when the user explicitly asks for Persian comments. |
 | `createdAt` | ISO-8601 string | yes | Preserved across re-init. |
 | `mr` | object | yes | Target merge request. |
 | `budget` | object | yes | `{target, max, forced}`. |
@@ -137,7 +141,11 @@ Re-initialising preserves `comments`, `dropped`, and `events`, updates the `mr` 
 | `id` | string | yes | `C1…Cn`, assigned once, never reused. |
 | `status` | enum | yes | `pending`, `approved`, `dropped`, `posted`. A legacy `draft` is accepted on read and normalised to `pending`; writes always use `pending`. |
 | `type` | enum | yes | `blocker`, `question`, `suggestion`, `follow-up`, `test-gap`. |
-| `severity` | enum | yes | `blocking`, `correctness`, `maintainability`, `nit`. |
+| `severity` | enum | yes | `blocking`, `correctness`, `maintainability`, `nit`. Render order and technical scale. |
+| `kind` | enum \| null | no | `bug`, `question`, `spec-mismatch`, `suggestion`, `refactor`, `test-gap`. What the finding is. |
+| `priority` | enum \| null | no | `blocking` or `non-blocking`. Whether it blocks merge. |
+| `affectsUsers` | bool \| null | no | Whether a user can observe the problem. |
+| `repro` | string \| null | no | Plain-text steps; rendered only when `kind = bug` or `affectsUsers = true`. No code fence. |
 | `anchor` | object | yes | See below. |
 | `evidence` | string | yes | Must cite a location, command, URL, or measurement. |
 | `source` | object | yes | Provenance and confidence. |
@@ -241,6 +249,10 @@ Hard failures, not warnings:
 |---|---|
 | `type` not in the allowed set | reject |
 | `severity` not in the allowed set | reject |
+| `kind` present and not in the allowed set | reject |
+| `priority` present and not in the allowed set | reject |
+| `affectsUsers` present and not a boolean | reject |
+| `repro` present and not a string, or set without `kind = bug` or `affectsUsers = true` | reject |
 | `decision` is `rejected` or `hypothesis` | reject; point at `drop --claim` |
 | `decision == open` on a non-`question` type | reject |
 | `decision != agreed` on `blocker`, `suggestion`, `follow-up`, or `test-gap` | reject |

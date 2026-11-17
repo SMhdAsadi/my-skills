@@ -28,7 +28,7 @@ The result is a deterministic `mr-comments.md` with one copy box per comment. Po
 ## Key Features
 
 - **Comment budget** — aim for 5, hard cap 10. `--force` is recorded so a later reader knows the cap was overridden.
-- **Three labels on every finding** — `kind` (bug, question, spec mismatch, suggestion, refactor, test gap), `priority` (blocking / non-blocking), and `affectsUsers` sit above the prose in one line; `severity` stays the technical scale that drives render order.
+- **A metadata line when it earns its place** — `type` (workflow role), `kind` (`bug`, `spec-mismatch`, `refactor`), `severity` (technical scale), and `affectsUsers` (`true`, `false`, or `null`) share one compact line above the prose. It renders only when a finding opts into `kind`, a `true`/`false` visibility value, or reproduction steps, so older states stay unchanged; `type=blocker` remains the merge gate and `severity` still drives render order.
 - **Reproduction steps when they matter** — a bug or a user-visible problem carries a plain `Steps to Reproduce` section with Expected / Actual; no fenced code block, and only native `suggestion` blocks render as code in GitLab.
 - **Resolvable threads** — inline and file anchors post as GitLab discussions with a Resolve button; MR-level notes are not threads.
 - **Evidence is mandatory** — a `path:line`, a backticked command, a URL, or a measurement with units. "Looks slow" is rejected by the script.
@@ -110,7 +110,7 @@ Schema, lifecycle, and validation rules: [`references/comment-model.md`](referen
 
 No `glab`? Generation and rendering still work; posting stops at the `.md`, and the copy blocks paste cleanly into the GitLab UI.
 
-Comments are English by default, whatever language the prompt used. Set `init --lang fa` only when the user explicitly asks for Persian comments; labels and value names localise automatically.
+Comments follow the language of the user's first prompt. For Persian, load the `better-persian` skill and set `init --lang fa`; labels and value names localise automatically.
 
 ---
 

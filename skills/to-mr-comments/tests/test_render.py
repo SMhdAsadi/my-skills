@@ -81,7 +81,7 @@ def make_state(comments, dropped=None, lang="en", head="abc1234") -> dict:
 
 class GoldenTests(unittest.TestCase):
     def test_golden_fixtures(self):
-        for name in ("basic", "suggestion", "empty", "fa"):
+        for name in ("basic", "suggestion", "empty", "metadata", "fa"):
             with self.subTest(name=name):
                 state = load_fixture(name)
                 expected = (FIXTURES / name / "expected.md").read_text(encoding="utf-8")
@@ -212,7 +212,6 @@ class MetadataTests(unittest.TestCase):
             type="blocker",
             severity="correctness",
             kind="bug",
-            priority="blocking",
             affectsUsers=True,
             repro="1. Open the screen.\n\n**Expected:** It loads.\n**Actual:** It crashes.",
         )
@@ -221,7 +220,7 @@ class MetadataTests(unittest.TestCase):
         self.assertEqual(lines[0], "**A question**")
         self.assertEqual(
             lines[1],
-            "**Kind:** `bug` · **Priority:** `blocking` · "
+            "**Type:** `blocker` · **Kind:** `bug` · "
             "**Severity:** `correctness` · **Affects users:** `yes`",
         )
         self.assertEqual(lines[2], "A body line.")
@@ -231,28 +230,74 @@ class MetadataTests(unittest.TestCase):
 
     def test_repro_hidden_without_bug_or_visible_flag(self):
         comment = base_comment(
-            kind="question",
+            kind="refactor",
             affectsUsers=False,
             repro="1. Press the button.",
         )
         self.assertNotIn("Steps to Reproduce", comments.body_for(comment, "inline"))
 
+    def test_old_state_has_no_metadata_line(self):
+        block = comments.body_for(base_comment(), "inline")
+        self.assertNotIn("**Type:**", block)
+        self.assertNotIn("**Severity:**", block)
+
+    def test_affects_users_null_does_not_trigger(self):
+        comment = base_comment(affectsUsers=None)
+        self.assertNotIn("**Type:**", comments.body_for(comment, "inline"))
+
+    def test_affects_users_false_renders_no(self):
+        comment = base_comment(affectsUsers=False)
+        self.assertIn("**Affects users:** `no`", comments.body_for(comment, "inline"))
+
+    def test_preview_header_drops_type_when_line_renders(self):
+        output = comments.render_markdown(load_fixture("metadata"), "inline")
+        self.assertIn("#### C1 · src/components/VSlider/VSlider.tsx:118-124", output)
+        self.assertNotIn("#### C1 · blocker", output)
+
+    def test_preview_header_keeps_type_for_old_state(self):
+        output = comments.render_markdown(load_fixture("basic"), "inline")
+        self.assertIn(
+            "#### C1 · blocker · src/components/VSlider/VSlider.tsx:118-124", output
+        )
+
     def test_persian_metadata_is_localised(self):
         comment = base_comment(
             kind="spec-mismatch",
-            priority="non-blocking",
             severity="nit",
             affectsUsers=True,
         )
         block = comments.body_for(comment, "inline", "fa")
-        self.assertIn("**نوع:** `عدم تطابق با spec`", block)
-        self.assertIn("**اولویت:** `غیرمسدودکننده`", block)
+        self.assertIn("**دسته:** `پرسش`", block)
+        self.assertIn("**ماهیت:** `عدم تطابق با spec`", block)
         self.assertIn("**اهمیت:** `جزئی`", block)
-        self.assertIn("**قابل مشاهده توسط کاربر:** `بله`", block)
+        self.assertIn("**تأثیر بر کاربر:** `بله`", block)
 
-    def test_posted_summary_uses_state_language(self):
-        state = load_fixture("fa")
+    def test_persian_labels_cover_every_enum_value(self):
+        table = comments._META_LABELS["fa"]["values"]
+        for group, codes in (
+            ("type", comments.TYPES),
+            ("kind", comments.FINDING_KINDS),
+            ("severity", comments.SEVERITIES),
+        ):
+            for code in codes:
+                with self.subTest(group=group, code=code):
+                    self.assertIn(code, table[group])
+
+    def test_unknown_language_falls_back_to_english(self):
+        block = comments.body_for(
+            base_comment(kind="bug", affectsUsers=True), "inline", "de"
+        )
+        self.assertIn("**Type:** `question`", block)
+        self.assertIn("**Kind:** `bug`", block)
+
+    def test_summary_uses_state_language(self):
+        state = make_state(
+            [base_comment(kind="bug", affectsUsers=True, severity="correctness")],
+            lang="fa",
+        )
         output = comments.render_markdown(state, "summary")
+        self.assertIn("**ماهیت:** `باگ`", output)
+        self.assertIn("**تأثیر بر کاربر:** `بله`", output)
         self.assertNotIn("**Kind:**", output)
 
 

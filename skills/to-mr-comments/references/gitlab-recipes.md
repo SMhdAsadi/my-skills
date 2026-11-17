@@ -69,6 +69,8 @@ glab api --hostname gitlab.example.com --method POST \
 
 The discussions endpoint takes the note text under `body`. Do not send `note`; that key belongs to a different payload shape and is rejected here.
 
+Inline and file notes are GitLab **discussions** and carry a Resolve button. MR-level notes are not resolvable threads; when a Resolve button is required, use an `inline` or `file` anchor instead of `mr`.
+
 Rules:
 
 - `old_path` and `new_path` are both required. They are equal unless the diff renames or copies the file; for a rename the state stores the pre-rename path as `anchor.oldPath` and the payload sends it as `old_path`.
@@ -160,7 +162,7 @@ Normalise before comparing:
 3. Replace remaining punctuation with spaces.
 4. Collapse whitespace.
 
-Compare the normalised note body against three renderings of the comment — inline (`**Title**`), summary (`### Title`), and the raw body — and take the highest ratio. This is what lets an MR-level note, which is posted with the summary rendering, still match its own earlier copy. A ratio of **0.9 or higher** is the same finding. Record a `skipped-duplicate` event and store the existing note id; do not post again.
+Compare the normalised note body against the comment's inline (`**Title**`), summary (`### Title`), prose-only (no metadata line or repro section), and raw-body renderings, and take the highest ratio. The prose-only pair is what lets a pre-2.3.0 note match after the metadata line was introduced; the full pair keeps a new note from being repeated. A ratio of **0.9 or higher** is the same finding. Record a `skipped-duplicate` event and store the existing note id; do not post again.
 
 Idempotence has a second layer: `--post` skips any comment that already carries a `posted.noteId`, including the one it stored when it matched a live duplicate. Re-running the command creates zero duplicates.
 

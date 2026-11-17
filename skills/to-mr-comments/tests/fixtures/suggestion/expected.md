@@ -5,8 +5,6 @@
 ````markdown
 **Guard the zero-width range**
 
-**Severity:** `maintainability`
-
 A zero-width range divides by zero here and pushes `NaN` into the value store.
 
 ```suggestion:-0+0

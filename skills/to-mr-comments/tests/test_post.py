@@ -271,6 +271,40 @@ class DedupeTests(unittest.TestCase):
         note = {"id": 99, "body": body, "position": {"new_path": "a.ts", "new_line": 4}}
         self.assertIs(post_comments.find_duplicate_note(comment, [note]), note)
 
+    def test_old_body_without_metadata_is_still_a_duplicate(self):
+        comment = make_comment()
+        comment.update(
+            {
+                "kind": "bug",
+                "affectsUsers": True,
+                "repro": "1. Open the screen.",
+                "severity": "correctness",
+            }
+        )
+        note = {
+            "id": 99,
+            "body": "**A title**\n\nA body line.",
+            "position": {"new_path": "a.ts", "new_line": 4},
+        }
+        self.assertIs(post_comments.find_duplicate_note(comment, [note]), note)
+
+    def test_note_with_metadata_is_still_a_duplicate(self):
+        comment = make_comment()
+        comment.update(
+            {
+                "kind": "bug",
+                "affectsUsers": True,
+                "repro": "1. Open the screen.",
+                "severity": "correctness",
+            }
+        )
+        note = {
+            "id": 99,
+            "body": post_comments.comments_cmd.body_for(comment, "inline"),
+            "position": {"new_path": "a.ts", "new_line": 4},
+        }
+        self.assertIs(post_comments.find_duplicate_note(comment, [note]), note)
+
     def test_different_anchor_is_not_a_duplicate(self):
         comment = make_comment()
         note = {

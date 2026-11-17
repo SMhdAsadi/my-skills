@@ -165,16 +165,26 @@ def normalize_text(text: str) -> str:
 
 
 def similarity(comment: dict, note_body: str, lang: str = "en") -> float:
+    """Compare a live note against every rendering of the comment.
+
+    Metadata and reproduction steps are decorations: an older note without them
+    must still match, and a newer note with them must not be posted twice. Both
+    the full rendering and a prose-only variant are therefore tested.
+    """
     note = normalize_text(note_body)
     if not note:
         return 0.0
-    rendered = normalize_text(comments_cmd.body_for(comment, "inline", lang))
-    summary = normalize_text(comments_cmd.body_for(comment, "summary", lang))
-    raw = normalize_text(comment.get("body") or "")
+    candidates = [comment.get("body") or ""]
+    for mode in ("inline", "summary"):
+        candidates.append(comments_cmd.body_for(comment, mode, lang))
+        candidates.append(
+            comments_cmd.body_for(
+                comment, mode, lang, include_metadata=False, include_repro=False
+            )
+        )
     return max(
-        difflib.SequenceMatcher(None, rendered, note).ratio(),
-        difflib.SequenceMatcher(None, summary, note).ratio(),
-        difflib.SequenceMatcher(None, raw, note).ratio(),
+        difflib.SequenceMatcher(None, normalize_text(candidate), note).ratio()
+        for candidate in candidates
     )
 
 
@@ -231,9 +241,7 @@ def glab_json(host: str, method: str, endpoint: str, payload=None):
     input_text = None
     if payload is not None:
         input_text = json.dumps(payload)
-        # `--input` does not set a content type on every glab build, and GitLab
-        # rejects an empty one with HTTP 415. State it explicitly.
-        cmd += ["--header", "Content-Type: application/json", "--input", "-"]
+        cmd += ["--input", "-"]
     try:
         proc = run(cmd, input_text=input_text)
     except ScriptError as error:

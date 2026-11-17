@@ -16,7 +16,7 @@ The inline box is what you paste into a diff thread. The summary box is for an M
 ````markdown
 **Throttle UI-to-JS dispatch in `panGesture.onChange`**
 
-**Kind:** `bug` · **Priority:** `blocking` · **Severity:** `correctness` · **Affects users:** `yes`
+**Type:** `blocker` · **Kind:** `bug` · **Severity:** `correctness` · **Affects users:** `yes`
 
 Calling `scheduleOnRN` on every pan tick dispatches up to 120 calls/sec at 120Hz. Throttling to 32ms keeps the thumb at native frame rate while cutting bridge traffic by about 75%.
 
@@ -36,7 +36,7 @@ Calling `scheduleOnRN` on every pan tick dispatches up to 120 calls/sec at 120Hz
 ### Throttle UI-to-JS dispatch in `panGesture.onChange`
 **Target:** `src/components/VSlider/VSlider.tsx:118-124`
 
-**Kind:** `bug` · **Priority:** `blocking` · **Severity:** `correctness` · **Affects users:** `yes`
+**Type:** `blocker` · **Kind:** `bug` · **Severity:** `correctness` · **Affects users:** `yes`
 
 Calling `scheduleOnRN` on every pan tick dispatches up to 120 calls/sec at 120Hz. Throttling to 32ms keeps the thumb at native frame rate while cutting bridge traffic by about 75%.
 

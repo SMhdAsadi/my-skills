@@ -67,3 +67,13 @@ Skills are versioned independently with SemVer. When a skill's behavior changes 
 - **OpenCode**: Skills can be loaded directly from the `skills/` directory or mirrored into `.opencode/skills/`.
 - **Codex / Universal Harnesses**: Read the corresponding `SKILL.md` when the user request matches the skill's triggers.
 - **Context Management**: Honor progressive disclosure. Do not dump the entire skill instructions into conversation context unless triggered by the user's intent.
+
+## Agent Workflow
+
+### Issue tracker
+
+Issues and specs live as markdown files under `.scratch/<feature-slug>/`. See [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md).
+
+### Domain docs
+
+Single-context: [`CONTEXT.md`](CONTEXT.md) plus `docs/adr/` at the repo root. See [`docs/agents/domain.md`](docs/agents/domain.md).

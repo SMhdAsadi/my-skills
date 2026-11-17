@@ -5,7 +5,7 @@ license: MIT
 compatibility: "git >= 2.0; glab >= 1.40 (only for posting)"
 metadata:
   author: SMhd
-  version: "2.2.0"
+  version: "2.3.0"
   tags: [git, gitlab, code-review, merge-requests, developer-tools]
 ---
 
@@ -114,8 +114,10 @@ For each survivor:
 ```bash
 python3 scripts/comments.py add \
   --type blocker --severity correctness \
+  --finding-kind bug --affects-users \
   --title "Throttle UI-to-JS dispatch in panGesture.onChange" \
   --body-file /tmp/c1.md \
+  --repro-file /tmp/c1-repro.md \
   --evidence "src/components/VSlider/VSlider.tsx:118 fires per pan tick; ~120 calls/s at 120Hz" \
   --source conversation --decision agreed --confidence high \
   --quote "we should throttle this" \
@@ -162,7 +164,7 @@ python3 scripts/post_comments.py --post --one C2    # a single comment
 
 Order: preview → show the payload list → ask → `approve` → `--post` → show a `#note_<id>` link per comment.
 
-Inline and file anchors become discussions (`POST .../discussions` with `body` and `position`); MR-level comments become notes (`POST .../notes` with `body`). A renamed file carries `old_path` as well as `new_path`. `--post` refuses unless HEAD equals the state HEAD, every selected comment is `approved`, and every anchor verifies at that HEAD. A comment is also refused when a near-identical live note already exists — inline (`**Title**`) or MR-level (`### Title`) — and is skipped and reported, never repeated. Partial posting is limited to `--one`.
+Inline and file anchors become discussions (`POST .../discussions` with `body` and `position`); these are resolvable threads with a Resolve button. MR-level comments become notes (`POST .../notes` with `body`) and are not resolvable threads — use an inline or file anchor when a Resolve button is required. A renamed file carries `old_path` as well as `new_path`. `--post` refuses unless HEAD equals the state HEAD, every selected comment is `approved`, and every anchor verifies at that HEAD. A comment is also refused when a near-identical live note already exists — inline (`**Title**`) or MR-level (`### Title`) — and is skipped and reported, never repeated. Partial posting is limited to `--one`.
 
 If `glab` is unavailable, stop at the `.md`. Do not attempt a workaround or a direct HTTP call.
 
@@ -173,6 +175,9 @@ Stable ids make revision cheap: "shorten C2", "drop C3", "make C1 a question", "
 ```bash
 python3 scripts/comments.py update C1 --body-file /tmp/c1-v2.md
 python3 scripts/comments.py update C1 --decision agreed --type blocker --severity correctness
+python3 scripts/comments.py update C1 --finding-kind bug --affects-users
+python3 scripts/comments.py update C1 --repro-file /tmp/c1-repro.md
+python3 scripts/comments.py update C1 --no-repro --no-finding-kind
 python3 scripts/comments.py update C1 --no-long
 python3 scripts/comments.py update C2 --reanchor --kind mr         # file left the diff
 python3 scripts/comments.py drop C3 --reason "out of scope for this MR"
@@ -181,7 +186,7 @@ python3 scripts/comments.py approve "all, skip C3"    # or "1, 3" / "2=APPROVE"
 python3 scripts/comments.py render
 ```
 
-`update` also takes `--decision`, `--confidence`, `--source`, and `--long` / `--no-long`; it re-validates the whole matrix, then runs duplicate detection, so an edit cannot collide with another active comment. Demote an anchor that a rebase moved out of the diff with `--reanchor --kind mr` (or `--reanchor` with no `--path`) and keep its id. If that rebase also moved HEAD, run `init` first: `verify` cannot resync a state whose anchor no longer verifies.
+`update` also takes `--decision`, `--confidence`, `--source`, `--finding-kind` / `--no-finding-kind`, `--affects-users` / `--no-affects-users`, `--repro-file` / `--no-repro`, and mutually exclusive `--long` / `--no-long`; it re-validates the whole matrix, then runs duplicate detection, so an edit cannot collide with another active comment. Demote an anchor that a rebase moved out of the diff with `--reanchor --kind mr` (or `--reanchor` with no `--path`) and keep its id. If that rebase also moved HEAD, run `init` first: `verify` cannot resync a state whose anchor no longer verifies.
 
 `update` on an approved comment resets it to `pending`, so approval is always explicit. Re-render after every change. Re-run `verify` after any rebase or amend, then `render` again: the footer's SHA is the proof of freshness. After posting, `--one C2` retries a single comment; a batch retry is never implicit.
 
@@ -211,15 +216,22 @@ python3 scripts/comments.py render
 | `follow-up` | why it is out of scope + a concrete next step |
 | `test-gap` | behavior + missing case + the cheapest useful test |
 
-Confidence maps to phrasing: **high** is a recommendation, **medium** is a question, **low** is a drop. Severity is separate: `blocking`, `correctness`, `maintainability`, `nit`.
+Confidence maps to phrasing: **high** is a recommendation, **medium** is a question, **low** is a drop. `severity` is the technical scale — `blocking`, `correctness`, `maintainability`, `nit` — and drives render order.
 
-Keep the title under 60 characters and the body under 120 words (250 with `--long`). One comment, one change. If a body needs a second heading, it needs a second comment.
+`type` is the workflow role and the only gate: `blocker`, `question`, `suggestion`, `follow-up`, `test-gap`. `finding-kind` answers what the finding is: `bug`, `spec-mismatch`, `refactor`. `severity` is the technical impact, not a second gate. `affectsUsers` is tri-state: `true`, `false`, or `null` when unknown.
+
+The opt-in fields share one compact line above the prose, in this order: `type`, `kind`, `severity`, `affectsUsers`. Only the fields that apply are rendered; the line appears when `kind` is non-null, `affectsUsers` is `true` or `false`, or `repro` is non-empty. A 2.2.0 state has none of those fields, so it renders exactly as before — no line, no `Severity` label. `affectsUsers = null` omits the visibility label when another field triggers the line; `false` renders `no`. Clear the opt-in fields with `--no-finding-kind` and `--no-repro`.
+
+A `repro` string is rendered as a `Steps to Reproduce` section only when `kind = bug` or `affectsUsers = true`. The section carries plain numbered steps plus `Expected` / `Actual` lines — no fenced code block; only a native `suggestion` block renders as code in GitLab. `add` rejects a `repro` that has neither trigger. Keep it short and concrete.
+
+Keep the title under 60 characters and the body under 120 words (250 with `--long`). The metadata line and repro section are outside that budget. One comment, one change. If a body needs a second heading, it needs a second comment.
 
 ## Language
 
-Write in the language of the user's first prompt and store it in `lang`.
+Write comments in the language of the user's first prompt. Set `lang=fa` with `init --lang fa` when that language is Persian, so labels and value names localise with the prose.
 
 - For Persian, load the `better-persian` skill if available. Otherwise apply four rules inline: use ZWNJ (`نیم‌فاصله`), Persian glyphs (`ی`, `ک`), keep Latin identifiers and code in backticks, and never repeat an English translation in parentheses.
+- Localised metadata labels and value names (type, kind, severity, affects users, steps to reproduce) follow `lang` automatically from the state file.
 - In RTL languages, start every line with a native word so renderers resolve direction correctly.
 - Code, paths, commands, and measurements stay in Latin script even inside RTL prose.
 

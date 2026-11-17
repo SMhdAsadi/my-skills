@@ -202,6 +202,7 @@ class CliCase(helpers.RepoCase, unittest.TestCase):
             "line": "--line",
             "end_line": "--end-line",
             "suggestion_file": "--suggestion-file",
+            "finding_kind": "--finding-kind",
         }
         for key, flag in mapping.items():
             value = values.get(key)
@@ -265,6 +266,31 @@ class AddValidationTests(CliCase):
     def test_inline_not_in_diff_is_rejected(self):
         self.init_state()
         self.blocked_add(line=12)
+
+    def test_repro_requires_bug_or_visible(self):
+        path = self.init_state()
+        repro = self.files / "repro.md"
+        repro.write_text("1. Open the screen.", encoding="utf-8")
+        self.blocked_add(extra=("--repro-file", str(repro)))
+        self.add(
+            finding_kind="bug",
+            extra=("--repro-file", str(repro)),
+        )
+        state = self.state(path)
+        self.assertEqual(state["comments"][-1]["repro"], "1. Open the screen.")
+
+    def test_empty_repro_is_rejected(self):
+        self.init_state()
+        repro = self.files / "empty-repro.md"
+        repro.write_text("  \n", encoding="utf-8")
+        self.blocked_add(finding_kind="bug", extra=("--repro-file", str(repro)))
+
+    def test_metadata_flags_are_stored(self):
+        path = self.init_state()
+        self.add(finding_kind="spec-mismatch", extra=("--affects-users",))
+        comment = self.state(path)["comments"][0]
+        self.assertEqual(comment["kind"], "spec-mismatch")
+        self.assertTrue(comment["affectsUsers"])
 
     def test_blocker_with_open_decision_is_rejected(self):
         self.init_state()
@@ -469,6 +495,41 @@ class LifecycleTests(CliCase):
         comment = self.state(path)["comments"][0]
         self.assertEqual(comment["status"], "pending")
         self.assertEqual(comment["title"], "A better title")
+
+    def test_update_clears_repro_then_kind(self):
+        path = self.init_state()
+        repro = self.files / "repro-clear.md"
+        repro.write_text("1. Open the screen.", encoding="utf-8")
+        self.add(finding_kind="bug", extra=("--repro-file", str(repro)))
+        self.cli("update", "C1", "--no-repro")
+        comment = self.state(path)["comments"][0]
+        self.assertIsNone(comment["repro"])
+        self.assertEqual(comment["kind"], "bug")
+        self.cli("update", "C1", "--no-finding-kind")
+        self.assertIsNone(self.state(path)["comments"][0]["kind"])
+
+    def test_update_clearing_kind_keeps_repro_is_rejected(self):
+        self.init_state()
+        repro = self.files / "repro-kind.md"
+        repro.write_text("1. Open the screen.", encoding="utf-8")
+        self.add(finding_kind="bug", extra=("--repro-file", str(repro)))
+        with self.assertRaises(_common.ScriptError):
+            self.cli("update", "C1", "--no-finding-kind")
+
+    def test_update_affects_users_tristate(self):
+        path = self.init_state()
+        self.add()
+        self.cli("update", "C1", "--affects-users")
+        self.assertTrue(self.state(path)["comments"][0]["affectsUsers"])
+        self.cli("update", "C1", "--no-affects-users")
+        self.assertFalse(self.state(path)["comments"][0]["affectsUsers"])
+
+    def test_affects_users_null_is_accepted(self):
+        path = self.init_state()
+        self.add()
+        state = self.state(path)
+        state["comments"][0]["affectsUsers"] = None
+        comments.validate_comment(state["comments"][0], state)
 
     def test_reanchor_requires_verification(self):
         self.init_state()

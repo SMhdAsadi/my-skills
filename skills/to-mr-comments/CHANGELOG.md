@@ -7,6 +7,29 @@ Each release is tagged `to-mr-comments-v<version>` and published on the [Release
 
 ---
 
+## [2.3.0] - 2026-11-17
+
+### Added
+
+- **Finding metadata.** Two optional fields describe a finding beyond its workflow type: `kind` (`bug`, `spec-mismatch`, `refactor`) and `affectsUsers` (`true`, `false`, or `null` when unknown). `type` remains the workflow gate (`blocker`, `question`, `suggestion`, `follow-up`, `test-gap`) and `severity` remains the technical scale and render order. When `kind` is non-null, `affectsUsers` is `true` or `false`, or `repro` is non-empty, one compact line renders `type`, `kind`, `severity`, and `affectsUsers`; a 2.2.0 state has none of those opt-in fields, so it renders unchanged. `add` and `update` take `--finding-kind`, `--affects-users` / `--no-affects-users`; `update` also takes `--no-finding-kind`.
+- **Reproduction steps.** `--repro-file` stores plain-text steps; the renderer emits a localised `Steps to Reproduce` section only for `kind = bug` or `affectsUsers = true`. `add` rejects a repro without either trigger; `update --no-repro` clears it. No fenced code block wraps the section; only a native `suggestion` block renders as code in GitLab.
+- **Resolvable threads.** Posting guidance now states that inline and file anchors become GitLab discussions with a Resolve button, while MR-level notes are not threads.
+
+### Changed
+
+- **Language follows the state.** `post_comments.py` passes `lang` into `body_for`, so the posted text matches the rendered copy. Dedupe compares both the full rendering and a prose-only variant, so a pre-2.3.0 body still matches the same comment without weakening detection of a new note.
+- **Clear flags.** `--no-finding-kind` and `--no-repro` clear the opt-in fields; `affectsUsers = null` is accepted as "unknown" rather than failing validation.
+
+### Fixed
+
+- **Persian metadata labels.** The labels use correct ZWNJ, `test-gap` is `کمبود تست` rather than a calque, and `type = blocker` / `severity = blocking` no longer collapse to the same word: `مسدودکننده` and `بحرانی`.
+
+### Removed
+
+- **`priority`.** It duplicated `type = blocker`, which remains the merge gate. The field was never released.
+
+---
+
 ## [2.2.0] - 2026-11-05
 
 ### Added

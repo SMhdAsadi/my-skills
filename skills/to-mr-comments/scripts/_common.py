@@ -28,6 +28,7 @@ CREATABLE_SCRATCH = ".tmp"
 SEVERITIES = ("blocking", "correctness", "maintainability", "nit")
 SEVERITY_ORDER = {"blocking": 0, "correctness": 1, "maintainability": 2, "nit": 3}
 TYPES = ("blocker", "question", "suggestion", "follow-up", "test-gap")
+FINDING_KINDS = ("bug", "spec-mismatch", "refactor")
 STATUSES = ("pending", "approved", "dropped", "posted")
 DECISIONS = ("agreed", "open", "rejected", "hypothesis")
 CONFIDENCES = ("high", "medium", "low")

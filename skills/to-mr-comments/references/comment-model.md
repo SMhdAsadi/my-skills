@@ -60,6 +60,9 @@ Re-initialising preserves `comments`, `dropped`, and `events`, updates the `mr` 
       "status": "pending",
       "type": "blocker",
       "severity": "correctness",
+      "kind": "bug",
+      "affectsUsers": true,
+      "repro": "1. Open a post with a media slider.\n2. Drag the thumb quickly.\n\n**Expected:** The thumb tracks the finger.\n**Actual:** It stutters.",
       "anchor": {
         "kind": "inline",
         "path": "src/components/VSlider/VSlider.tsx",
@@ -137,7 +140,10 @@ Re-initialising preserves `comments`, `dropped`, and `events`, updates the `mr` 
 | `id` | string | yes | `C1…Cn`, assigned once, never reused. |
 | `status` | enum | yes | `pending`, `approved`, `dropped`, `posted`. A legacy `draft` is accepted on read and normalised to `pending`; writes always use `pending`. |
 | `type` | enum | yes | `blocker`, `question`, `suggestion`, `follow-up`, `test-gap`. |
-| `severity` | enum | yes | `blocking`, `correctness`, `maintainability`, `nit`. |
+| `severity` | enum | yes | `blocking`, `correctness`, `maintainability`, `nit`. Render order and technical scale. |
+| `kind` | enum \| null | no | `bug`, `spec-mismatch`, `refactor`. What the finding is; independent of `type`. |
+| `affectsUsers` | bool \| null | no | `true`, `false`, or `null` when unknown. `null` omits the visibility label when another field triggers the line. |
+| `repro` | string \| null | no | Plain-text steps; rendered only when `kind = bug` or `affectsUsers = true`. Clear it with `update --no-repro`. No code fence. |
 | `anchor` | object | yes | See below. |
 | `evidence` | string | yes | Must cite a location, command, URL, or measurement. |
 | `source` | object | yes | Provenance and confidence. |
@@ -147,6 +153,18 @@ Re-initialising preserves `comments`, `dropped`, and `events`, updates the `mr` 
 | `long` | boolean | yes | Relaxes the body limit from 120 to 250 words. |
 | `posted` | object | yes | `{noteId, discussionId, postedAt}`. `noteId` is the created note; `discussionId` is set for discussion notes and for a matched duplicate. |
 | `dropReason` | string | no | Set by `drop` or by an approval skip. |
+
+### How the fields render
+
+`type` and `severity` are required, but they only join the metadata line when the comment opts into a new field. The line renders when `kind` is non-null, `affectsUsers` is `true` or `false`, or `repro` is non-empty, and lists whichever fields apply, in this order:
+
+```text
+**Type:** `blocker` · **Kind:** `bug` · **Severity:** `correctness` · **Affects users:** `yes`
+```
+
+A 2.2.0 comment has none of `kind`, `affectsUsers`, or `repro`, so it renders with no metadata line and no `Severity` label — the same output it had before 2.3.0. `affectsUsers = false` renders `no`; `null` omits the visibility label when the line is present for another field. The line is localised from `lang`; the state always stores the enum codes.
+
+`type` and `kind` are independent: a `type = question` may carry `kind = bug` while its decision is `open`. The type controls the gate; the kind records the nature. `severity` controls render order and is not a second gate.
 
 ### `anchor`
 
@@ -241,6 +259,9 @@ Hard failures, not warnings:
 |---|---|
 | `type` not in the allowed set | reject |
 | `severity` not in the allowed set | reject |
+| `kind` present and not in the allowed set | reject |
+| `affectsUsers` present and not a boolean or `null` | reject |
+| `repro` present but not a string, empty, or set without `kind = bug` or `affectsUsers = true` | reject |
 | `decision` is `rejected` or `hypothesis` | reject; point at `drop --claim` |
 | `decision == open` on a non-`question` type | reject |
 | `decision != agreed` on `blocker`, `suggestion`, `follow-up`, or `test-gap` | reject |

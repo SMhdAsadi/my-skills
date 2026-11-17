@@ -92,15 +92,16 @@ def build_discussion_payload(comment: dict, state: dict) -> dict | None:
             position["old_path"] = old_path
     else:
         return None
+    lang = (state.get("lang") or "en")
     return {
-        "body": comments_cmd.body_for(comment, "inline"),
+        "body": comments_cmd.body_for(comment, "inline", lang),
         "position": position,
     }
 
 
 def build_note_payload(comment: dict, state: dict) -> dict:
     """A regular MR note carries no position and takes the text under `body`."""
-    return {"body": comments_cmd.body_for(comment, "summary")}
+    return {"body": comments_cmd.body_for(comment, "summary", state.get("lang") or "en")}
 
 
 def post_endpoint(state: dict, comment: dict) -> str:
@@ -163,17 +164,25 @@ def normalize_text(text: str) -> str:
     return " ".join(text.split())
 
 
-def similarity(comment: dict, note_body: str) -> float:
+def similarity(comment: dict, note_body: str, lang: str = "en") -> float:
+    """Compare a live note against every rendering of the comment.
+
+    Metadata and reproduction steps are decorations: an older note without them
+    must still match, and a newer note with them must not be posted twice. Both
+    the full rendering and a prose-only variant are therefore tested.
+    """
     note = normalize_text(note_body)
     if not note:
         return 0.0
-    rendered = normalize_text(comments_cmd.body_for(comment, "inline"))
-    summary = normalize_text(comments_cmd.body_for(comment, "summary"))
-    raw = normalize_text(comment.get("body") or "")
+    candidates = [comment.get("body") or ""]
+    for mode in ("inline", "summary"):
+        candidates += [
+            comments_cmd.body_for(comment, mode, lang),
+            comments_cmd.body_for(comment, mode, lang, decorations=False),
+        ]
     return max(
-        difflib.SequenceMatcher(None, rendered, note).ratio(),
-        difflib.SequenceMatcher(None, summary, note).ratio(),
-        difflib.SequenceMatcher(None, raw, note).ratio(),
+        difflib.SequenceMatcher(None, normalize_text(candidate), note).ratio()
+        for candidate in candidates
     )
 
 
@@ -184,7 +193,7 @@ def note_anchor(note: dict) -> tuple[str | None, int | None]:
     return path, line
 
 
-def find_duplicate_note(comment: dict, notes: list[dict]) -> dict | None:
+def find_duplicate_note(comment: dict, notes: list[dict], lang: str = "en") -> dict | None:
     anchor = comment.get("anchor") or {}
     path = anchor.get("path")
     line = anchor.get("line")
@@ -194,7 +203,7 @@ def find_duplicate_note(comment: dict, notes: list[dict]) -> dict | None:
         note_path, note_line = note_anchor(note)
         if note_path != path or note_line != line:
             continue
-        if similarity(comment, note.get("body") or "") >= 0.9:
+        if similarity(comment, note.get("body") or "", lang) >= 0.9:
             return note
     return None
 
@@ -396,7 +405,7 @@ def cmd_post(state_path: Path, state: dict, one: str | None) -> int:
     posted_ids: list[str] = []
     skipped: list[str] = []
     for comment in selected:
-        duplicate = find_duplicate_note(comment, notes)
+        duplicate = find_duplicate_note(comment, notes, state.get("lang") or "en")
         if duplicate:
             comment.setdefault("posted", {}).update(
                 {

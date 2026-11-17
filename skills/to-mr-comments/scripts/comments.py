@@ -32,6 +32,7 @@ from _common import (
     BUDGET_TARGET,
     CONFIDENCES,
     DECISIONS,
+    FINDING_KINDS,
     SCHEMA_VERSION,
     SEVERITIES,
     SEVERITY_ORDER,
@@ -349,6 +350,25 @@ def validate_comment(comment: dict, state: dict) -> None:
         raise ScriptError(
             f"severity must be one of {', '.join(SEVERITIES)}, got {severity!r}."
         )
+    kind = comment.get("kind")
+    if kind is not None and kind not in FINDING_KINDS:
+        raise ScriptError(
+            f"kind must be one of {', '.join(FINDING_KINDS)}, got {kind!r}."
+        )
+    affects = comment.get("affectsUsers")
+    if affects is not None and not isinstance(affects, bool):
+        raise ScriptError("affectsUsers must be true, false, or null.")
+    repro = comment.get("repro")
+    if repro is not None:
+        if not isinstance(repro, str):
+            raise ScriptError("repro must be a string.")
+        if not repro.strip():
+            raise ScriptError("repro is empty; use `--no-repro` to clear it.")
+        if not _repro_allowed(comment):
+            raise ScriptError(
+                "repro is only rendered for kind=bug or affectsUsers=true; "
+                "set one of them or clear repro with --no-repro."
+            )
 
     title = (comment.get("title") or "").strip()
     if not title:
@@ -481,7 +501,92 @@ def longest_backtick_run(text: str) -> int:
     return max((len(match.group(0)) for match in re.finditer(r"`+", text)), default=0)
 
 
-def body_for(comment: dict, mode: str) -> str:
+# Labels are localised; the state keeps enum codes. English values are the
+# codes themselves, so only Persian needs a value table.
+_META_LABELS = {
+    "en": {
+        "type": "Type",
+        "kind": "Kind",
+        "severity": "Severity",
+        "affects": "Affects users",
+        "repro": "Steps to Reproduce",
+    },
+    "fa": {
+        "type": "دسته",
+        "kind": "ماهیت",
+        "severity": "اهمیت",
+        "affects": "تأثیر بر کاربر",
+        "repro": "مراحل بازتولید",
+    },
+}
+
+_FA_VALUES = {
+    "blocker": "مسدودکننده",
+    "question": "پرسش",
+    "suggestion": "پیشنهاد",
+    "follow-up": "پیگیری",
+    "test-gap": "کمبود تست",
+    "bug": "باگ",
+    "spec-mismatch": "عدم تطابق با spec",
+    "refactor": "refactor",
+    "blocking": "بحرانی",
+    "correctness": "صحت",
+    "maintainability": "نگهداری",
+    "nit": "جزئی",
+    "yes": "بله",
+    "no": "خیر",
+}
+
+
+def _display(value, lang: str) -> str:
+    if isinstance(value, bool):
+        value = "yes" if value else "no"
+    return _FA_VALUES.get(value, value) if lang == "fa" else value
+
+
+def _metadata_triggered(comment: dict) -> bool:
+    """Whether the opt-in metadata line should render."""
+    return (
+        comment.get("kind") is not None
+        or comment.get("affectsUsers") is not None
+        or bool((comment.get("repro") or "").strip())
+    )
+
+
+def _repro_allowed(comment: dict) -> bool:
+    return comment.get("kind") == "bug" or comment.get("affectsUsers") is True
+
+
+def _metadata_line(comment: dict, lang: str) -> str:
+    """One compact line of labels above the prose; empty when not triggered."""
+    if not _metadata_triggered(comment):
+        return ""
+    labels = _META_LABELS.get(lang, _META_LABELS["en"])
+    fields = (
+        ("type", comment.get("type")),
+        ("kind", comment.get("kind")),
+        ("severity", comment.get("severity")),
+        ("affects", comment.get("affectsUsers")),
+    )
+    return " · ".join(
+        f"**{labels[key]}:** `{_display(value, lang)}`"
+        for key, value in fields
+        if value is not None
+    )
+
+
+def _repro_section(comment: dict, lang: str) -> str:
+    """Reproduction steps, only for a bug or a user-visible problem."""
+    repro = (comment.get("repro") or "").strip()
+    if not repro or not _repro_allowed(comment):
+        return ""
+    labels = _META_LABELS.get(lang, _META_LABELS["en"])
+    return f"**{labels['repro']}**\n\n{repro}"
+
+
+def body_for(
+    comment: dict, mode: str, lang: str = "en", *, decorations: bool = True
+) -> str:
     title = (comment.get("title") or "").strip()
     body = (comment.get("body") or "").strip()
     anchor = comment.get("anchor") or {}
@@ -493,20 +598,32 @@ def body_for(comment: dict, mode: str) -> str:
     else:
         parts = [f"**{title}**"]
 
+    if decorations:
+        metadata = _metadata_line(comment, lang)
+        if metadata:
+            parts.append(metadata)
     if body:
         parts.append(body)
+    if decorations:
+        repro = _repro_section(comment, lang)
+        if repro:
+            parts.append(repro)
     if comment.get("type") == "suggestion" and (comment.get("suggestion") or "").strip():
         replacement = comment["suggestion"].strip("\n")
         parts.append("```suggestion:-0+0\n" + replacement + "\n```")
     return "\n\n".join(parts)
 
 
-def render_comment(comment: dict, mode: str) -> str:
+def render_comment(comment: dict, mode: str, lang: str = "en") -> str:
     anchor = comment.get("anchor") or {}
-    parts = [f"#### {comment.get('id')} · {comment.get('type')} · {anchor_label(anchor)}"]
+    heading = f"#### {comment.get('id')}"
+    if not _metadata_triggered(comment):
+        heading += f" · {comment.get('type')}"
+    heading += f" · {anchor_label(anchor)}"
+    parts = [heading]
     if mode == "inline":
         parts.append(f"**Anchor:** `{anchor_label(anchor)}`")
-    block = body_for(comment, mode)
+    block = body_for(comment, mode, lang)
     fence = "`" * max(4, longest_backtick_run(block) + 1)
     parts.append(f"{fence}markdown\n{block}\n{fence}")
     return "\n\n".join(parts)
@@ -548,7 +665,7 @@ def render_markdown(state: dict, mode: str = "inline") -> str:
         else:
             chunks.append("No actionable comments.")
     else:
-        chunks.extend(render_comment(comment, mode) for comment in ordered)
+        chunks.extend(render_comment(comment, mode, state.get("lang", "en")) for comment in ordered)
         if rows:
             chunks.append("**Dropped candidates**")
             chunks.append(dropped_table(rows))
@@ -761,12 +878,18 @@ def cmd_add(args: argparse.Namespace) -> int:
     suggestion = None
     if args.suggestion_file:
         suggestion = Path(args.suggestion_file).read_text(encoding="utf-8").strip("\n")
+    repro = None
+    if args.repro_file:
+        repro = Path(args.repro_file).read_text(encoding="utf-8").strip()
 
     comment = {
         "id": "C0",
         "status": "pending",
         "type": args.type,
         "severity": args.severity,
+        "kind": args.finding_kind,
+        "affectsUsers": args.affects_users,
+        "repro": repro,
         "anchor": anchor,
         "evidence": (args.evidence or "").strip(),
         "source": {
@@ -881,6 +1004,16 @@ def cmd_update(args: argparse.Namespace) -> int:
         comment["body"] = Path(args.body_file).read_text(encoding="utf-8").strip()
     if args.severity is not None:
         comment["severity"] = args.severity
+    if args.clear_finding_kind:
+        comment["kind"] = None
+    elif args.finding_kind is not None:
+        comment["kind"] = args.finding_kind
+    if args.affects_users is not None:
+        comment["affectsUsers"] = args.affects_users
+    if args.clear_repro:
+        comment["repro"] = None
+    elif args.repro_file:
+        comment["repro"] = Path(args.repro_file).read_text(encoding="utf-8").strip()
     if args.type is not None:
         comment["type"] = args.type
     if args.evidence is not None:
@@ -1232,6 +1365,11 @@ def build_parser() -> argparse.ArgumentParser:
     add_parser.add_argument("--line", type=int, help="Line number for an inline anchor")
     add_parser.add_argument("--end-line", type=int, help="Display-only range end")
     add_parser.add_argument("--suggestion-file", help="Replacement lines for a suggestion")
+    add_parser.add_argument("--finding-kind", choices=FINDING_KINDS)
+    add_parser.add_argument(
+        "--affects-users", action=argparse.BooleanOptionalAction, default=None
+    )
+    add_parser.add_argument("--repro-file", help="Steps to reproduce, plain text")
     add_parser.add_argument("--long", action="store_true", default=False)
     add_parser.add_argument("--force", action="store_true", help="Exceed the budget")
 
@@ -1243,6 +1381,20 @@ def build_parser() -> argparse.ArgumentParser:
     update_parser.add_argument("--type", choices=TYPES)
     update_parser.add_argument("--evidence")
     update_parser.add_argument("--suggestion-file")
+    kind_update = update_parser.add_mutually_exclusive_group()
+    kind_update.add_argument("--finding-kind", choices=FINDING_KINDS)
+    kind_update.add_argument(
+        "--no-finding-kind", dest="clear_finding_kind", action="store_true"
+    )
+    update_parser.add_argument(
+        "--affects-users", action=argparse.BooleanOptionalAction, default=None
+    )
+    repro_update = update_parser.add_mutually_exclusive_group()
+    repro_update.add_argument("--repro-file", help="Steps to reproduce, plain text")
+    repro_update.add_argument(
+        "--no-repro", dest="clear_repro", action="store_true",
+        help="Remove the reproduction steps",
+    )
     update_parser.add_argument("--quote")
     update_parser.add_argument("--source", choices=SOURCES)
     update_parser.add_argument("--decision", choices=DECISIONS)

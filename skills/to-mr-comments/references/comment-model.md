@@ -110,7 +110,7 @@ Re-initialising preserves `comments`, `dropped`, and `events`, updates the `mr` 
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `schemaVersion` | integer | yes | `1`. |
-| `lang` | string | yes | Comment language. `en` by default; `fa` only when the user explicitly asks for Persian comments. |
+| `lang` | string | yes | Language of the user's first prompt (`en`, `fa`, …). |
 | `createdAt` | ISO-8601 string | yes | Preserved across re-init. |
 | `mr` | object | yes | Target merge request. |
 | `budget` | object | yes | `{target, max, forced}`. |

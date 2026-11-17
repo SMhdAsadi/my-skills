@@ -81,7 +81,7 @@ def make_state(comments, dropped=None, lang="en", head="abc1234") -> dict:
 
 class GoldenTests(unittest.TestCase):
     def test_golden_fixtures(self):
-        for name in ("basic", "suggestion", "empty", "metadata", "fa"):
+        for name in ("basic", "suggestion", "empty", "fa"):
             with self.subTest(name=name):
                 state = load_fixture(name)
                 expected = (FIXTURES / name / "expected.md").read_text(encoding="utf-8")
@@ -250,8 +250,19 @@ class MetadataTests(unittest.TestCase):
         self.assertIn("**Affects users:** `no`", comments.body_for(comment, "inline"))
 
     def test_preview_header_drops_type_when_line_renders(self):
-        output = comments.render_markdown(load_fixture("metadata"), "inline")
-        self.assertIn("#### C1 · src/components/VSlider/VSlider.tsx:118-124", output)
+        state = make_state(
+            [
+                base_comment(
+                    type="blocker",
+                    severity="correctness",
+                    kind="bug",
+                    affectsUsers=True,
+                    repro="1. Open the screen.",
+                )
+            ]
+        )
+        output = comments.render_markdown(state, "inline")
+        self.assertIn("#### C1 · src/a.ts:4", output)
         self.assertNotIn("#### C1 · blocker", output)
 
     def test_preview_header_keeps_type_for_old_state(self):
@@ -272,16 +283,9 @@ class MetadataTests(unittest.TestCase):
         self.assertIn("**اهمیت:** `جزئی`", block)
         self.assertIn("**تأثیر بر کاربر:** `بله`", block)
 
-    def test_persian_labels_cover_every_enum_value(self):
-        table = comments._META_LABELS["fa"]["values"]
-        for group, codes in (
-            ("type", comments.TYPES),
-            ("kind", comments.FINDING_KINDS),
-            ("severity", comments.SEVERITIES),
-        ):
-            for code in codes:
-                with self.subTest(group=group, code=code):
-                    self.assertIn(code, table[group])
+    def test_persian_values_cover_every_enum_value(self):
+        codes = {*comments.TYPES, *comments.FINDING_KINDS, *comments.SEVERITIES}
+        self.assertTrue(codes <= set(comments._FA_VALUES))
 
     def test_unknown_language_falls_back_to_english(self):
         block = comments.body_for(

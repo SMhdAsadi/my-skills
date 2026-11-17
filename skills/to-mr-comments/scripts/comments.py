@@ -364,7 +364,7 @@ def validate_comment(comment: dict, state: dict) -> None:
             raise ScriptError("repro must be a string.")
         if not repro.strip():
             raise ScriptError("repro is empty; use `--no-repro` to clear it.")
-        if kind != "bug" and affects is not True:
+        if not _repro_allowed(comment):
             raise ScriptError(
                 "repro is only rendered for kind=bug or affectsUsers=true; "
                 "set one of them or clear repro with --no-repro."
@@ -501,9 +501,8 @@ def longest_backtick_run(text: str) -> int:
     return max((len(match.group(0)) for match in re.finditer(r"`+", text)), default=0)
 
 
-# Metadata labels and values per comment language. The state keeps enum codes;
-# only the rendered copy is localised. English values are the codes themselves,
-# so only languages that need a translation carry a `values` table.
+# Labels are localised; the state keeps enum codes. English values are the
+# codes themselves, so only Persian needs a value table.
 _META_LABELS = {
     "en": {
         "type": "Type",
@@ -511,9 +510,6 @@ _META_LABELS = {
         "severity": "Severity",
         "affects": "Affects users",
         "repro": "Steps to Reproduce",
-        "yes": "yes",
-        "no": "no",
-        "values": {},
     },
     "fa": {
         "type": "دسته",
@@ -521,89 +517,75 @@ _META_LABELS = {
         "severity": "اهمیت",
         "affects": "تأثیر بر کاربر",
         "repro": "مراحل بازتولید",
-        "yes": "بله",
-        "no": "خیر",
-        "values": {
-            "type": {
-                "blocker": "مسدودکننده",
-                "question": "پرسش",
-                "suggestion": "پیشنهاد",
-                "follow-up": "پیگیری",
-                "test-gap": "کمبود تست",
-            },
-            "kind": {
-                "bug": "باگ",
-                "spec-mismatch": "عدم تطابق با spec",
-                "refactor": "refactor",
-            },
-            "severity": {
-                "blocking": "بحرانی",
-                "correctness": "صحت",
-                "maintainability": "نگهداری",
-                "nit": "جزئی",
-            },
-        },
     },
 }
 
+_FA_VALUES = {
+    "blocker": "مسدودکننده",
+    "question": "پرسش",
+    "suggestion": "پیشنهاد",
+    "follow-up": "پیگیری",
+    "test-gap": "کمبود تست",
+    "bug": "باگ",
+    "spec-mismatch": "عدم تطابق با spec",
+    "refactor": "refactor",
+    "blocking": "بحرانی",
+    "correctness": "صحت",
+    "maintainability": "نگهداری",
+    "nit": "جزئی",
+    "yes": "بله",
+    "no": "خیر",
+}
 
-def metadata_triggered(comment: dict) -> bool:
-    """Whether the opt-in metadata line should render.
 
-    `type` and `severity` predate the line, so they only join it when a new
-    field asks for it. A 2.2.0 state has none of those fields, which keeps its
-    rendering byte-identical.
-    """
-    repro = (comment.get("repro") or "").strip()
+def _display(value, lang: str) -> str:
+    if isinstance(value, bool):
+        value = "yes" if value else "no"
+    return _FA_VALUES.get(value, value) if lang == "fa" else value
+
+
+def _metadata_triggered(comment: dict) -> bool:
+    """Whether the opt-in metadata line should render."""
     return (
         comment.get("kind") is not None
         or comment.get("affectsUsers") is not None
-        or bool(repro)
+        or bool((comment.get("repro") or "").strip())
     )
 
 
-def localised_metadata(comment: dict, lang: str) -> str:
+def _repro_allowed(comment: dict) -> bool:
+    return comment.get("kind") == "bug" or comment.get("affectsUsers") is True
+
+
+def _metadata_line(comment: dict, lang: str) -> str:
     """One compact line of labels above the prose; empty when not triggered."""
-    if not metadata_triggered(comment):
+    if not _metadata_triggered(comment):
         return ""
-    table = _META_LABELS.get(lang, _META_LABELS["en"])
-    values = table["values"]
-
-    def value(group: str, code: str | None) -> str:
-        return values.get(group, {}).get(code, code) if code else ""
-
-    parts = [f"**{table['type']}:** `{value('type', comment.get('type'))}`"]
-    if comment.get("kind") is not None:
-        parts.append(f"**{table['kind']}:** `{value('kind', comment.get('kind'))}`")
-    parts.append(
-        f"**{table['severity']}:** `{value('severity', comment.get('severity'))}`"
+    labels = _META_LABELS.get(lang, _META_LABELS["en"])
+    fields = (
+        ("type", comment.get("type")),
+        ("kind", comment.get("kind")),
+        ("severity", comment.get("severity")),
+        ("affects", comment.get("affectsUsers")),
     )
-    affects = comment.get("affectsUsers")
-    if affects is not None:
-        parts.append(
-            f"**{table['affects']}:** `{table['yes'] if affects else table['no']}`"
-        )
-    return " · ".join(parts)
+    return " · ".join(
+        f"**{labels[key]}:** `{_display(value, lang)}`"
+        for key, value in fields
+        if value is not None
+    )
 
 
-def repro_section(comment: dict, lang: str) -> str:
+def _repro_section(comment: dict, lang: str) -> str:
     """Reproduction steps, only for a bug or a user-visible problem."""
     repro = (comment.get("repro") or "").strip()
-    if not repro:
+    if not repro or not _repro_allowed(comment):
         return ""
-    if comment.get("kind") != "bug" and comment.get("affectsUsers") is not True:
-        return ""
-    table = _META_LABELS.get(lang, _META_LABELS["en"])
-    return f"**{table['repro']}**\n\n{repro}"
+    labels = _META_LABELS.get(lang, _META_LABELS["en"])
+    return f"**{labels['repro']}**\n\n{repro}"
 
 
 def body_for(
-    comment: dict,
-    mode: str,
-    lang: str = "en",
-    *,
-    include_metadata: bool = True,
-    include_repro: bool = True,
+    comment: dict, mode: str, lang: str = "en", *, decorations: bool = True
 ) -> str:
     title = (comment.get("title") or "").strip()
     body = (comment.get("body") or "").strip()
@@ -616,14 +598,14 @@ def body_for(
     else:
         parts = [f"**{title}**"]
 
-    if include_metadata:
-        metadata = localised_metadata(comment, lang)
+    if decorations:
+        metadata = _metadata_line(comment, lang)
         if metadata:
             parts.append(metadata)
     if body:
         parts.append(body)
-    if include_repro:
-        repro = repro_section(comment, lang)
+    if decorations:
+        repro = _repro_section(comment, lang)
         if repro:
             parts.append(repro)
     if comment.get("type") == "suggestion" and (comment.get("suggestion") or "").strip():
@@ -635,7 +617,7 @@ def body_for(
 def render_comment(comment: dict, mode: str, lang: str = "en") -> str:
     anchor = comment.get("anchor") or {}
     heading = f"#### {comment.get('id')}"
-    if not metadata_triggered(comment):
+    if not _metadata_triggered(comment):
         heading += f" · {comment.get('type')}"
     heading += f" · {anchor_label(anchor)}"
     parts = [heading]
@@ -906,6 +888,7 @@ def cmd_add(args: argparse.Namespace) -> int:
         "type": args.type,
         "severity": args.severity,
         "kind": args.finding_kind,
+        "affectsUsers": args.affects_users,
         "repro": repro,
         "anchor": anchor,
         "evidence": (args.evidence or "").strip(),
@@ -921,8 +904,6 @@ def cmd_add(args: argparse.Namespace) -> int:
         "long": bool(args.long),
         "posted": {"noteId": None, "discussionId": None, "postedAt": None},
     }
-    if args.affects_users is not None:
-        comment["affectsUsers"] = args.affects_users
     validate_comment(comment, state)
 
     duplicate = find_duplicate(state, comment)
@@ -1385,12 +1366,8 @@ def build_parser() -> argparse.ArgumentParser:
     add_parser.add_argument("--end-line", type=int, help="Display-only range end")
     add_parser.add_argument("--suggestion-file", help="Replacement lines for a suggestion")
     add_parser.add_argument("--finding-kind", choices=FINDING_KINDS)
-    affects_add = add_parser.add_mutually_exclusive_group()
-    affects_add.add_argument(
-        "--affects-users", dest="affects_users", action="store_true", default=None
-    )
-    affects_add.add_argument(
-        "--no-affects-users", dest="affects_users", action="store_false"
+    add_parser.add_argument(
+        "--affects-users", action=argparse.BooleanOptionalAction, default=None
     )
     add_parser.add_argument("--repro-file", help="Steps to reproduce, plain text")
     add_parser.add_argument("--long", action="store_true", default=False)
@@ -1409,12 +1386,8 @@ def build_parser() -> argparse.ArgumentParser:
     kind_update.add_argument(
         "--no-finding-kind", dest="clear_finding_kind", action="store_true"
     )
-    affects_update = update_parser.add_mutually_exclusive_group()
-    affects_update.add_argument(
-        "--affects-users", dest="affects_users", action="store_true", default=None
-    )
-    affects_update.add_argument(
-        "--no-affects-users", dest="affects_users", action="store_false"
+    update_parser.add_argument(
+        "--affects-users", action=argparse.BooleanOptionalAction, default=None
     )
     repro_update = update_parser.add_mutually_exclusive_group()
     repro_update.add_argument("--repro-file", help="Steps to reproduce, plain text")

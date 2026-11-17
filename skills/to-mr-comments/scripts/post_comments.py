@@ -176,12 +176,10 @@ def similarity(comment: dict, note_body: str, lang: str = "en") -> float:
         return 0.0
     candidates = [comment.get("body") or ""]
     for mode in ("inline", "summary"):
-        candidates.append(comments_cmd.body_for(comment, mode, lang))
-        candidates.append(
-            comments_cmd.body_for(
-                comment, mode, lang, include_metadata=False, include_repro=False
-            )
-        )
+        candidates += [
+            comments_cmd.body_for(comment, mode, lang),
+            comments_cmd.body_for(comment, mode, lang, decorations=False),
+        ]
     return max(
         difflib.SequenceMatcher(None, normalize_text(candidate), note).ratio()
         for candidate in candidates

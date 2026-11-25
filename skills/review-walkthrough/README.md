@@ -26,7 +26,7 @@ Interactive chat walkthroughs introduce problems of their own: turn-by-turn gati
 ## Key Features
 
 - **Vertical Slice Architecture**: Organizes changes by workflow or sub-change (`Vertical Slices`) rather than horizontal technical layers. Each slice pairs its own explanation, ordered reading files, line-anchored `Heads Up` notes, and practical `QA Check` scenarios right where they apply.
-- **Scrollable HTML Companion**: A self-contained, single-column scrollable HTML document (~25 KB) with zero sticky bars or bottom footer. All `Vertical Slices` render expanded by default for `Ctrl+F` search, with manual per-slice collapse persistence, a quick-jump strip when >2 slices exist, One Light / One Dark Pro themes, and automatic full expansion when printing.
+- **Scrollable HTML Companion**: A self-contained, single-column scrollable HTML document (~25 KB) with a non-sticky top header and zero `position: fixed` bars or bottom footer. `Overview` and `Cross-Cutting` start expanded (manual collapse persisted in `rw-collapsed:<headSha>`), while `Vertical Slices` start collapsed as a compact scannable index (manual expansion persisted in `rw-expanded:<headSha>`). Full-header tap targets stick cleanly at the top while scrolling an open card, One Light / One Dark Pro themes adapt automatically, and printing resets headers to static and expands all sections.
 - **Multi-IDE & 1-Click Copy**: Deep links for **VS Code**, **Cursor**, **Windsurf**, **Zed**, **Android Studio**, **GoLand**, and **JetBrains** (`idea://`), selectable in the top header and remembered across sessions. Dedicated 1-click Copy Path buttons (`path:line`) next to every reference pill for terminal or custom editors.
 - **Full RTL & Persian Support**: Offline-first, lightweight font stack (`local("Vazirmatn")` + system UI fonts) scoped strictly to Persian (`lang="fa"`), direction-aware arrows (`←`), unified conversational prose across Markdown and HTML, and isolated Latin identifiers so paths and flags never scramble.
 - **Qualitative Anti-Fatigue Scaling**: No rigid numeric caps or filler items. Single-slice trivial diffs omit duplicate `Overview` prose; clean refactors omit empty `Heads Up` and `QA Check` sections; complex changes scale naturally.
@@ -59,10 +59,9 @@ Structured JSON (`review-walkthrough.json`, Schema v3) is the single source of t
 | Walkthrough section | HTML component |
 | :--- | :--- |
 | Header (title, IDE/theme toggles, branches, stats, `headSha`, `.md` file) | Non-sticky top `<header>` that scrolls out of view |
-| `Overview` (optional summary, `affects`, optional `split`, collapsed `Skim List`) | Top `.card.ov` with `<details class="skim">` |
-| Quick-Jump Strip (`slices.length > 2`) | Non-sticky `.qj` anchor pills (`#slice-<id>`) |
-| Each `Vertical Slice` (summary, `Files` checklist, `Heads Up`, `QA Check`) | Collapsible `.card.slice` with live progress badge and `localStorage` persistence |
-| `Cross-Cutting` (multi-slice `Heads Up` and end-to-end `QA Check`) | Optional closing `.card.cc` |
+| `Overview` (optional summary, `affects`, optional `split`, collapsed `Skim List`) | Collapsible `.card.ov` (open by default, sticky `.sl-h` header, `rw-collapsed:<headSha>` persistence, `<details class="skim">`) |
+| Each `Vertical Slice` (summary, `Files` checklist, `Heads Up`, `QA Check`) | Collapsible `.card.slice` (collapsed by default, sticky `.sl-h` header, live `.sl-prog` badge, `rw-expanded:<headSha>` persistence) |
+| `Cross-Cutting` (multi-slice `Heads Up` and end-to-end `QA Check`) | Optional closing `.card.cc` (open by default, sticky `.sl-h` header, `.sl-prog` badge when `qa` is non-empty, `rw-collapsed:<headSha>` persistence) |
 
 How it works:
 
@@ -131,8 +130,8 @@ The skills CLI installs the default branch (latest) by default. To pin a specifi
 # Latest (tracks main)
 npx skills add SMhdAsadi/my-skills@review-walkthrough
 
-# Pinned to v4.0.0
-npx skills add https://github.com/SMhdAsadi/my-skills/tree/review-walkthrough-v4.0.0
+# Pinned to v4.1.0
+npx skills add https://github.com/SMhdAsadi/my-skills/tree/review-walkthrough-v4.1.0
 ```
 
 Note: in `owner/repo@review-walkthrough`, the `@` suffix selects the *skill*, not a version — version pinning is done via the tag URL above. The current version is also recorded in `SKILL.md` under `metadata.version` (informational, per the Agent Skills spec).

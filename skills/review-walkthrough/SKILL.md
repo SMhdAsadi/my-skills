@@ -5,7 +5,7 @@ license: MIT
 compatibility: "git >= 2.0"
 metadata:
   author: SMhd
-  version: "4.0.0"
+  version: "4.1.0"
   tags:
     - git
     - code-review
@@ -196,7 +196,7 @@ The script:
 1. Validates the JSON against Schema v3 (`walkthrough_schema.py`).
 2. Enriches git metadata and resolves bare basenames against changed files in `git diff --name-only` across `overview.skim`, `slices[*].files`, `slices[*].headsUp[*].refs`, and `crossCutting.headsUp[*].refs`.
 3. Deterministically renders `review-walkthrough.md` with localized headings, anchors, and collapsed `<details>` for `Skim List`.
-4. Deterministically renders `review-walkthrough.html` (~25 KB, zero-sticky single-column scrollable layout, multi-IDE selector for VS Code, Cursor, Windsurf, Zed, Android Studio, GoLand, JetBrains, 1-click Copy Path, pure prose, and local Vazirmatn font support).
+4. Deterministically renders `review-walkthrough.html` (~25 KB, single-column scrollable layout with a non-sticky global header, sticky collapsible section headers, default-collapsed `Vertical Slices`, multi-IDE selector for VS Code, Cursor, Windsurf, Zed, Android Studio, GoLand, JetBrains, 1-click Copy Path, pure prose, and local Vazirmatn font support).
 5. Exits 0 and reports both file paths.
 
 ---

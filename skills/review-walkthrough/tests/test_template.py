@@ -121,9 +121,19 @@ class TestWalkthroughTemplate(unittest.TestCase):
         for token in ("--bg:#fafafa", "--bg:#282c34", "--accent:#4078f2", "--accent:#61afef"):
             self.assertIn(token, self.content)
 
-    def test_scrollable_layout_has_no_sticky_fixed_or_footer(self):
+    def test_layout_sticky_section_headers_no_fixed_no_qj_and_prog_font(self):
         css = re.search(r"<style>(.*?)</style>", self.content, re.DOTALL).group(1)
-        self.assertNotRegex(css, r"position\s*:\s*(sticky|fixed)")
+        self.assertNotRegex(css, r"position\s*:\s*fixed")
+        self.assertNotRegex(css, r"\.hdr\{[^}]*position\s*:\s*sticky")
+        self.assertRegex(
+            css,
+            r"\.sl-h\{[^}]*position\s*:\s*sticky[^}]*top\s*:\s*0[^}]*background\s*:\s*var\(--surface\)",
+        )
+        self.assertNotRegex(css, r"\.card\{[^}]*overflow\s*:\s*hidden")
+        self.assertRegex(css, r"\.sl-prog\{[^}]*var\(--font\)")
+        self.assertNotRegex(css, r"\.sl-prog\{[^}]*var\(--mono\)")
+        self.assertNotIn(".qj", self.content)
+        self.assertNotIn("qj-pill", self.content)
         self.assertNotIn("letter-spacing", css)
         self.assertNotIn("text-transform", css)
         self.assertIn("max-width:780px", css)
@@ -132,7 +142,10 @@ class TestWalkthroughTemplate(unittest.TestCase):
         self.assertNotIn(".card[hidden]", self.content)
         self.assertIn("shaHint", self.content)
         self.assertIn(".sl-body[hidden]{display:block!important}", css)
-        self.assertIn(".qj,.sl-tog{display:none!important}", css)
+        self.assertIn(".sl-tog svg{display:none!important}", css)
+        print_blocks = re.findall(r"@media print\{(.*)\}", css)
+        self.assertTrue(print_blocks, "Expected @media print blocks")
+        self.assertRegex("\n".join(print_blocks), r"\.sl-h\{[^}]*position\s*:\s*static")
 
     def test_print_rules_allow_card_flow_and_keep_atomic_items(self):
         css = re.search(r"<style>(.*?)</style>", self.content, re.DOTALL).group(1)
@@ -230,7 +243,7 @@ function makeEl(tag) {{
     }},
     dataset: {{}},
     style: {{}},
-    setAttribute(k, v) {{ this.attrs[k] = String(v); }},
+    setAttribute(k, v) {{ this.attrs[k] = String(v); if (k === 'id') this.id = String(v); }},
     getAttribute(k) {{ return Object.prototype.hasOwnProperty.call(this.attrs, k) ? this.attrs[k] : null; }},
     removeAttribute(k) {{ delete this.attrs[k]; }},
     append(...nodes) {{
@@ -384,9 +397,9 @@ if (!dumped.includes('Deduplicate concurrent token refresh')) throw new Error('M
 if (!dumped.includes('Evict stale credentials on failure')) throw new Error('Missing slice 2');
 if (!dumped.includes('Cross-Cutting Notes')) throw new Error('Missing crossCutting');
 
-// 3a. Quick-jump bar: absent for 2 slices, present for 3 slices
+// 3a. Quick-jump bar must NOT render even when slices.length > 2
 if (appEl.querySelectorAll('.qj').length !== 0) {{
-  throw new Error('Quick-jump bar must NOT render when slices.length <= 2');
+  throw new Error('Quick-jump bar must NOT render');
 }}
 const threeSlices = JSON.parse(JSON.stringify(valid));
 threeSlices.slices.push({{
@@ -398,15 +411,11 @@ threeSlices.slices.push({{
 dataEl.textContent = JSON.stringify(threeSlices);
 appEl.children = [];
 vm.runInNewContext(patched, sandbox);
-const qjBars = appEl.querySelectorAll('.qj');
-if (qjBars.length !== 1) throw new Error('Quick-jump bar must render when slices.length > 2');
-const qjLinks = qjBars[0].querySelectorAll('a');
-if (qjLinks.length !== 3) throw new Error('Expected 3 quick-jump links, got ' + qjLinks.length);
-if (qjLinks[2].getAttribute('href') !== '#slice-audit-logging') {{
-  throw new Error('Unexpected quick-jump href: ' + qjLinks[2].getAttribute('href'));
+if (appEl.querySelectorAll('.qj').length !== 0 || appEl.querySelectorAll('.qj-pill').length !== 0) {{
+  throw new Error('Quick-jump bar must NEVER render');
 }}
 
-// 3b. Collapsible slices, live progress, never auto-collapse, & localStorage persistence
+// 3b. Slices collapsed by default, full-header button inside <h2 class="sl-h">, live progress, never auto-toggle, & rw-expanded persistence
 storage.clear();
 dataEl.textContent = JSON.stringify(valid);
 appEl.children = [];
@@ -414,19 +423,35 @@ vm.runInNewContext(patched, sandbox);
 
 const sliceEls = appEl.querySelectorAll('.slice');
 if (sliceEls.length !== 2) throw new Error('Expected 2 slice elements');
-const s1Tog = sliceEls[0].querySelector('.sl-tog');
+const s1H = sliceEls[0].querySelector('h2.sl-h');
+const s1Tog = s1H && s1H.querySelector('button.sl-tog');
 const s1Body = sliceEls[0].querySelector('.sl-body');
 const s1Prog = sliceEls[0].querySelector('.sl-prog');
-const s2Tog = sliceEls[1].querySelector('.sl-tog');
+const s2Tog = sliceEls[1].querySelector('h2.sl-h').querySelector('button.sl-tog');
 const s2Body = sliceEls[1].querySelector('.sl-body');
 const s2Prog = sliceEls[1].querySelector('.sl-prog');
 
-if (!s1Tog || !s1Body || !s1Prog) throw new Error('Slice 1 missing toggle/body/progress');
-if (s1Tog.getAttribute('aria-expanded') !== 'true' || s1Body.hidden !== false) {{
-  throw new Error('Slice 1 must start expanded');
+if (!s1H || !s1Tog || !s1Body || !s1Prog) throw new Error('Slice 1 missing h2.sl-h / button.sl-tog / body / prog');
+if (s1Tog.getAttribute('type') !== 'button') throw new Error('Slice toggle must be button[type=button]');
+if (s1Tog.getAttribute('aria-controls') !== s1Body.getAttribute('id')) throw new Error('Slice toggle aria-controls must match body id');
+if (s1Tog.getAttribute('aria-expanded') !== 'false' || s1Body.hidden !== true) {{
+  throw new Error('Slice 1 must start collapsed by default');
+}}
+if (s2Tog.getAttribute('aria-expanded') !== 'false' || s2Body.hidden !== true) {{
+  throw new Error('Slice 2 must start collapsed by default');
 }}
 if (s1Prog.textContent !== '0/2') throw new Error('Expected Slice 1 progress 0/2, got ' + s1Prog.textContent);
 if (s2Prog.textContent !== '0/1') throw new Error('Expected Slice 2 progress 0/1, got ' + s2Prog.textContent);
+
+// Expand Slice 1 -> persists in rw-expanded:a1b2c3d
+s1Tog.onclick();
+if (s1Tog.getAttribute('aria-expanded') !== 'true' || s1Body.hidden !== false) {{
+  throw new Error('Slice 1 should be expanded after toggle');
+}}
+const savedExpanded = JSON.parse(storage.get('rw-expanded:a1b2c3d') || '[]');
+if (savedExpanded.length !== 1 || savedExpanded[0] !== 'token-refresh') {{
+  throw new Error('Unexpected rw-expanded persistence: ' + JSON.stringify(savedExpanded));
+}}
 
 // Check file 0 in Slice 1 -> updates progress, never auto-collapses, does not affect Slice 2
 const s1Checks = sliceEls[0].querySelectorAll('input');
@@ -441,32 +466,119 @@ if (savedFiles.length !== 1 || savedFiles[0] !== 'token-refresh:0') {{
   throw new Error('Unexpected rw-files persistence: ' + JSON.stringify(savedFiles));
 }}
 
-// Collapse Slice 1 -> persists in rw-collapsed:a1b2c3d
-s1Tog.onclick();
-if (s1Tog.getAttribute('aria-expanded') !== 'false' || s1Body.hidden !== true) {{
-  throw new Error('Slice 1 should be collapsed after toggle');
-}}
-const savedCollapsed = JSON.parse(storage.get('rw-collapsed:a1b2c3d') || '[]');
-if (savedCollapsed.length !== 1 || savedCollapsed[0] !== 'token-refresh') {{
-  throw new Error('Unexpected rw-collapsed persistence: ' + JSON.stringify(savedCollapsed));
-}}
-
-// Reload with persisted storage -> Slice 1 stays collapsed with 1/2, Slice 2 stays expanded & unchecked
+// Reload with persisted storage -> Slice 1 stays expanded with 1/2, Slice 2 stays collapsed & unchecked
 appEl.children = [];
 vm.runInNewContext(patched, sandbox);
 const reloadedSlices = appEl.querySelectorAll('.slice');
-if (reloadedSlices[0].querySelector('.sl-tog').getAttribute('aria-expanded') !== 'false') {{
-  throw new Error('Slice 1 collapsed state did not persist across reload');
+if (reloadedSlices[0].querySelector('.sl-tog').getAttribute('aria-expanded') !== 'true' || reloadedSlices[0].querySelector('.sl-body').hidden !== false) {{
+  throw new Error('Slice 1 expanded state did not persist across reload');
 }}
 if (reloadedSlices[0].querySelector('.sl-prog').textContent !== '1/2') {{
   throw new Error('Slice 1 progress did not persist across reload');
 }}
-if (reloadedSlices[1].querySelector('.sl-tog').getAttribute('aria-expanded') !== 'true') {{
-  throw new Error('Slice 2 should remain expanded');
+if (reloadedSlices[1].querySelector('.sl-tog').getAttribute('aria-expanded') !== 'false' || reloadedSlices[1].querySelector('.sl-body').hidden !== true) {{
+  throw new Error('Slice 2 should remain collapsed');
 }}
 if (reloadedSlices[1].querySelector('input').checked !== false) {{
   throw new Error('Slice 2 same-path file must remain unchecked');
 }}
+// Collapse Slice 1 again -> removes from rw-expanded:a1b2c3d
+reloadedSlices[0].querySelector('.sl-tog').onclick();
+const afterCollapse = JSON.parse(storage.get('rw-expanded:a1b2c3d') || '[]');
+if (afterCollapse.length !== 0) {{
+  throw new Error('Collapsing Slice 1 should remove it from rw-expanded, got ' + JSON.stringify(afterCollapse));
+}}
+
+// 3b2. Collapsible Overview & Cross-Cutting (open by default, rw-collapsed persistence, & Cross-Cutting .sl-prog)
+storage.clear();
+dataEl.textContent = JSON.stringify(valid);
+appEl.children = [];
+vm.runInNewContext(patched, sandbox);
+
+const ovEl = appEl.querySelector('.ov');
+const ovH = ovEl.querySelector('h2.sl-h');
+const ovTog = ovH && ovH.querySelector('button.sl-tog');
+const ovBody = ovEl.querySelector('.sl-body');
+if (!ovH || !ovTog || !ovBody) throw new Error('Overview missing h2.sl-h / button.sl-tog / .sl-body');
+if (ovTog.getAttribute('type') !== 'button') throw new Error('Overview toggle must be button[type=button]');
+if (ovTog.getAttribute('aria-controls') !== ovBody.getAttribute('id')) throw new Error('Overview aria-controls mismatch');
+if (ovTog.getAttribute('aria-expanded') !== 'true' || ovBody.hidden !== false) {{
+  throw new Error('Overview must start expanded by default');
+}}
+if (ovEl.querySelector('.sl-prog')) throw new Error('Overview must not render .sl-prog');
+
+const ccEl = appEl.querySelector('.cc');
+const ccH = ccEl.querySelector('h2.sl-h');
+const ccTog = ccH && ccH.querySelector('button.sl-tog');
+const ccBody = ccEl.querySelector('.sl-body');
+const ccProg = ccEl.querySelector('.sl-prog');
+if (!ccH || !ccTog || !ccBody || !ccProg) throw new Error('Cross-Cutting missing h2.sl-h / button.sl-tog / .sl-body / .sl-prog');
+if (ccTog.getAttribute('type') !== 'button') throw new Error('Cross-Cutting toggle must be button[type=button]');
+if (ccTog.getAttribute('aria-controls') !== ccBody.getAttribute('id')) throw new Error('Cross-Cutting aria-controls mismatch');
+if (ccTog.getAttribute('aria-expanded') !== 'true' || ccBody.hidden !== false) {{
+  throw new Error('Cross-Cutting must start expanded by default');
+}}
+if (ccProg.textContent !== '0/1') throw new Error('Expected Cross-Cutting progress 0/1, got ' + ccProg.textContent);
+
+// Toggling Cross-Cutting QA checkbox updates .sl-prog without collapsing
+const ccQaBox = ccEl.querySelector('input');
+ccQaBox.checked = true;
+ccQaBox.onchange();
+if (ccProg.textContent !== '1/1') throw new Error('Expected Cross-Cutting progress 1/1 after check, got ' + ccProg.textContent);
+if (ccTog.getAttribute('aria-expanded') !== 'true' || ccBody.hidden !== false) {{
+  throw new Error('Checking Cross-Cutting QA must not collapse section');
+}}
+
+// Collapse both Overview and Cross-Cutting -> persist in rw-collapsed:a1b2c3d
+ovTog.onclick();
+ccTog.onclick();
+if (ovTog.getAttribute('aria-expanded') !== 'false' || ovBody.hidden !== true) {{
+  throw new Error('Overview should collapse on click');
+}}
+if (ccTog.getAttribute('aria-expanded') !== 'false' || ccBody.hidden !== true) {{
+  throw new Error('Cross-Cutting should collapse on click');
+}}
+const savedOvCcCollapsed = JSON.parse(storage.get('rw-collapsed:a1b2c3d') || '[]');
+if (!savedOvCcCollapsed.includes('overview') || !savedOvCcCollapsed.includes('cross-cutting')) {{
+  throw new Error('Unexpected rw-collapsed for overview/cross-cutting: ' + JSON.stringify(savedOvCcCollapsed));
+}}
+
+// Reload -> Overview and Cross-Cutting stay collapsed, and Cross-Cutting progress stays 1/1
+appEl.children = [];
+vm.runInNewContext(patched, sandbox);
+if (appEl.querySelector('.ov').querySelector('.sl-tog').getAttribute('aria-expanded') !== 'false' || appEl.querySelector('.ov').querySelector('.sl-body').hidden !== true) {{
+  throw new Error('Overview collapsed state did not persist across reload');
+}}
+if (appEl.querySelector('.cc').querySelector('.sl-tog').getAttribute('aria-expanded') !== 'false' || appEl.querySelector('.cc').querySelector('.sl-body').hidden !== true) {{
+  throw new Error('Cross-Cutting collapsed state did not persist across reload');
+}}
+if (appEl.querySelector('.cc').querySelector('.sl-prog').textContent !== '1/1') {{
+  throw new Error('Cross-Cutting progress did not persist across reload');
+}}
+
+// Re-expand Overview -> removes overview from rw-collapsed
+appEl.querySelector('.ov').querySelector('.sl-tog').onclick();
+const afterOvExpand = JSON.parse(storage.get('rw-collapsed:a1b2c3d') || '[]');
+if (afterOvExpand.includes('overview') || !afterOvExpand.includes('cross-cutting')) {{
+  throw new Error('Re-expanding Overview should remove only overview from rw-collapsed: ' + JSON.stringify(afterOvExpand));
+}}
+
+// Cross-Cutting without qa omits .sl-prog
+const ccNoQaPayload = JSON.parse(JSON.stringify(valid));
+ccNoQaPayload.crossCutting.qa = [];
+storage.clear();
+dataEl.textContent = JSON.stringify(ccNoQaPayload);
+appEl.children = [];
+vm.runInNewContext(patched, sandbox);
+if (appEl.querySelector('.cc').querySelector('.sl-prog')) {{
+  throw new Error('Cross-Cutting without QA items must not render .sl-prog');
+}}
+
+// Restore valid payload with clean storage for subsequent tests
+storage.clear();
+dataEl.textContent = JSON.stringify(valid);
+appEl.children = [];
+vm.runInNewContext(patched, sandbox);
 
 // 3c. QA persistence across slice & crossCutting, duplicate basename disambiguation, IDE URLs, print beforeprint/afterprint, & RTL
 const s1QaCheck = reloadedSlices[0].querySelectorAll('input')[1];
@@ -542,7 +654,11 @@ const faPayload = {{
     title: 'بخش سوم',
     summary: ['خلاصه سوم'],
     files: [{{ role: 'سوم', path: 'src/c.ts', startLine: 1, summary: 'فایل سوم.' }}]
-  }}]
+  }}],
+  crossCutting: {{
+    headsUp: [{{ title: 'نکته سراسری', body: 'بررسی سراسری.', refs: [] }}],
+    qa: ['بررسی کلی RTL']
+  }}
 }};
 storage.clear();
 dataEl.textContent = JSON.stringify(faPayload);
@@ -551,6 +667,8 @@ vm.runInNewContext(patched, sandbox);
 if (sandbox.document.documentElement.dir !== 'rtl') throw new Error('Expected dir=rtl for fa');
 const faProg = appEl.querySelector('.sl-prog').textContent;
 if (faProg !== '۰/۲') throw new Error('Expected Persian digits ۰/۲ in progress, got ' + faProg);
+const faCcProg = appEl.querySelector('.cc').querySelector('.sl-prog');
+if (!faCcProg || faCcProg.textContent !== '۰/۱') throw new Error('Expected Persian digits ۰/۱ in Cross-Cutting progress, got ' + (faCcProg && faCcProg.textContent));
 const faDump = textDump(appEl);
 if (!faDump.includes('←')) throw new Error('Expected RTL arrow ← in Persian render');
 
@@ -577,9 +695,9 @@ const codeEls = appEl.querySelectorAll('code').map(c => ({{ text: c.textContent,
 if (!codeEls.some(c => c.text === 'build()' && c.dir === 'ltr') || !codeEls.some(c => c.text === 'edUrl()' && c.dir === 'ltr')) {{
   throw new Error('Expected backticked code spans as <code dir="ltr">, got: ' + JSON.stringify(codeEls));
 }}
-const qjFirstBdi = appEl.querySelector('.qj-pill').querySelector('bdi');
-if (!qjFirstBdi || qjFirstBdi.textContent !== 'Vertical Slice' || qjFirstBdi.getAttribute('dir') !== 'ltr') {{
-  throw new Error('Expected quick-jump pill to keep Vertical Slice in one <bdi dir="ltr">');
+const slice1Bdi = appEl.querySelector('.slice').querySelector('.sl-tit').querySelector('bdi');
+if (!slice1Bdi || slice1Bdi.textContent !== 'Vertical Slice' || slice1Bdi.getAttribute('dir') !== 'ltr') {{
+  throw new Error('Expected slice title to keep Vertical Slice in one <bdi dir="ltr">');
 }}
 const faEdSel = appEl.querySelector('.ed-sel');
 if (faEdSel.getAttribute('aria-label') !== 'ویرایشگر') {{

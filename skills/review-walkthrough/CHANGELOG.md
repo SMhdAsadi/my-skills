@@ -7,6 +7,20 @@ Each release is tagged `review-walkthrough-v<version>` and published on the [Rel
 
 ---
 
+## [4.1.0] - 2026-11-25
+
+### Changed
+- **Default-Collapsed `Vertical Slices` & Full-Header Collapsible Sections (`walkthrough-template.html`):** All `Vertical Slices` now start collapsed by default on initial load (acting as their own compact scannable index) with manual expansion persisted in `localStorage["rw-expanded:<headSha>"]` (never auto-expanding or auto-collapsing on checkbox clicks). `Overview` and `Cross-Cutting` now share the same collapsible header pattern, starting expanded by default with manual collapse persisted in `localStorage["rw-collapsed:<headSha>"]` under `'overview'` and `'cross-cutting'`. When `Cross-Cutting` includes `qa` items, its header renders a live `.sl-prog` completion pill.
+- **Full-Row Header Toggle & Sticky Section Headers:** Moved the section toggle into `<h2 class="sl-h"><button type="button" class="sl-tog" aria-expanded="..." aria-controls="...">` so the entire header bar (title, `.sl-prog`, and chevron) is a keyboard-accessible tap target. Made `.sl-h` sticky (`position: sticky; top: 0; z-index: 2; background: var(--surface)`) inside each card (`overflow-x: clip` instead of `overflow: hidden`, with a bottom divider when open) while keeping the global `<header class="hdr">` non-sticky and resetting `.sl-h` to `position: static` (with `.sl-tog svg` hidden and all `.sl-body[hidden]` / `<details class="skim">` expanded) in `@media print`.
+- **Progress Pill Font (`var(--font)`):** Switched `.sl-prog` from `var(--mono)` to `var(--font)` with `font-variant-numeric: tabular-nums` so Persian digits (`۰/۳`) render in `Vazirmatn` instead of a system fallback font.
+
+### Removed
+- **Quick-Jump Pill Bar (`.qj` / `.qj-pill`):** Removed the redundant `<nav class="qj">` pill bar and its CSS/print rules now that default-collapsed slice headers serve directly as the index.
+
+### Fixed
+- **RTL Bidi Isolation & Branch Arrows:** Isolated contiguous multi-word Latin/ASCII phrases (identifiers, versions, `HTML/Markdown`, `Ctrl+F`) inside single `<bdi dir="ltr">` elements in `rich()` while keeping trailing punctuation outside; enforced RTL `←` branch arrows in both Markdown and HTML (`fix_rtl_arrows()`).
+- **Deleted File Pills, Editor Aliases & Print Pagination:** Kept `status: "deleted"` file pills as non-link `<span class="rl">` across IDE switches, honored all Schema v3 editor aliases (`webstorm`, `pycharm`, `vscode-insiders`, `vscodium`, `studio` → `android-studio`), localized `.ed-sel` `aria-label` and `.std` status titles, and allowed `.card` containers to flow naturally across printed pages while keeping atomic items unbroken.
+
 ## [4.0.0] - 2026-11-25
 
 ### Changed (Breaking)

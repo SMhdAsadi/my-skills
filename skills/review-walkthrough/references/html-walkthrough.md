@@ -226,8 +226,6 @@ The selected editor is saved across sessions in `localStorage["rw-editor"]`. Ini
 | Skim | بررسی گذرا |
 | What to test | مواردی که باید تست شوند |
 | Cross-cutting | نکات مشترک بین بخش‌ها |
-| Slices | بخش‌ها |
-| Collapse slice / Expand slice | بستن بخش / باز کردن بخش |
 | Theme: System / Light / Dark | پوسته: خودکار / روشن / تیره |
 | Editor | ویرایشگر |
 | Open in editor | باز کردن در ویرایشگر |
@@ -274,10 +272,10 @@ The template delivers an ultra-lean footprint (~25 KB total file size) with zero
 | Token | Light (One Light) | Dark (One Dark Pro) | Use |
 | :--- | :--- | :--- | :--- |
 | `--bg` | `#fafafa` | `#282c34` | page background |
-| `--surface` | `#fff` | `#2c313c` | cards and quick-jump pills |
+| `--surface` | `#fff` | `#2c313c` | cards and sticky section headers |
 | `--border` | `#e4e4e7` | `#3e4451` | 1px borders and dividers |
 | `--text` | `#383a42` | `#dcdfe4` | titles and body |
-| `--text-2` | `#696c77` | `#abb2bf` | quick-jump pill text |
+| `--text-2` | `#696c77` | `#abb2bf` | secondary body text |
 | `--text-muted` | `#6e7177` | `#939cb0` | labels, hints, badges |
 | `--accent` | `#4078f2` | `#61afef` | links, checkboxes, focus ring |
 | `--accent-contrast` | `#fff` | `#282c34` | text selection contrast |
@@ -286,34 +284,34 @@ The template delivers an ultra-lean footprint (~25 KB total file size) with zero
 | `--add` | `#50a14f` | `#98c379` | added-lines stats, added dot, copied state |
 | `--del` | `#e45649` | `#e06c75` | removed-lines stats, deleted dot |
 
-- No gradients, glows, or box-shadows beyond 1px borders. Focus ring: `2px solid var(--accent)` with `2px` offset.
+- No gradients, glows, or box-shadows beyond 1px borders. Focus ring: `2px solid var(--accent)` with `2px` offset (or `-2px` inset on full-width `.sl-tog` header toggles).
 
 ---
 
 ## 8. Layout & Components
 
-- **Single-Column Scrollable Layout:** Centered container (`.wrap`, `max-width: 780px`), **zero `position: sticky` or `position: fixed` elements anywhere**, and **no bottom `<footer>`**.
+- **Single-Column Scrollable Layout:** Centered container (`.wrap`, `max-width: 780px`), **non-sticky global `<header class="hdr">`**, **zero `position: fixed` elements anywhere**, and **no bottom `<footer>`**. Cards use `padding: 0` and `overflow-x: clip` (never `overflow: hidden`) so sticky section headers work cleanly.
 - **Consolidated Top Header (`.hdr`):** Contains `meta.title`, IDE selector (`.ed-sel`), theme toggle (`.seg`), branch tags (`branch ←/→ base`), diff stats, pinned `headSha` (with staleness tooltip), and `markdownPath` basename. Scrolls off-screen naturally as the reviewer reads.
-- **Overview Card (`.card.ov`):** Renders `overview.title`, optional `overview.summary` paragraphs, `affects`, optional `--warn`-bordered `split` callout (plus optional `boundaries` list), and a collapsed-by-default `<details class="skim">` for `overview.skim`.
-- **Quick-Jump Strip (`.qj`):** Rendered directly below `Overview` only when `slices.length > 2`; displays clickable `#slice-<id>` anchor pills and scrolls away naturally.
-- **Collapsible Vertical Slices (`.card.slice`):** All slices render expanded on load for continuous reading and `Ctrl+F` search.
-  - Slice header (`.sl-hdr`): slice number + title, live completion badge (`.sl-prog`, e.g., `2/4` checked files + QA), and manual collapse toggle button (`.sl-tog` with `aria-expanded`).
-  - Manual collapse state persists in `localStorage["rw-collapsed:" + headSha]` as an array of collapsed slice IDs. Checking off files or QA items **never** auto-collapses a slice.
+- **Collapsible Sticky Section Headers (`.sl-h` + `.sl-tog`):** `Overview`, every `Vertical Slice`, and `Cross-Cutting` share the same collapsible header pattern: `<h2 class="sl-h"><button type="button" class="sl-tog" aria-expanded="..." aria-controls="...">`. The entire header row (title, optional `.sl-prog`, and direction-aware chevron) is a single keyboard-accessible tap target, sticks cleanly at the top of the viewport (`position: sticky; top: 0; z-index: 2; background: var(--surface)`) while scrolling through an open card, and renders a bottom divider (`border-bottom: 1px solid var(--border)`) when expanded.
+- **Progress Pill (`.sl-prog`):** Uses `var(--font)` with `font-variant-numeric: tabular-nums` (not `var(--mono)`) so Persian digits (`۰/۳`) render in `Vazirmatn`.
+- **Overview Card (`.card.ov`):** Starts **expanded** on initial load (`body.hidden === false`, `aria-expanded="true"`), with manual collapse persisted in `localStorage["rw-collapsed:" + headSha]` under `'overview'`. Renders `overview.title`, optional `overview.summary` paragraphs, `affects`, optional `--warn`-bordered `split` callout (plus optional `boundaries` list), and a collapsed-by-default `<details class="skim">` for `overview.skim`.
+- **Collapsible Vertical Slices (`.card.slice`):** Every slice starts **collapsed** by default on initial load (`body.hidden === true`, `aria-expanded="false"`) so the collapsed slice headers themselves act as a compact scannable index (no `.qj` quick-jump strip).
+  - Manual expansion state persists in `localStorage["rw-expanded:" + headSha]` as an array of expanded slice IDs. Checking off files or QA items **never** auto-expands or auto-collapses a slice.
   - Inside each slice (`.sl-body`): prose `summary` → `Files` checklist (`localStorage["rw-files:" + headSha]` keyed by `"<sliceId>:<idx>"`) → optional `Heads Up` list (`.hu-item` with `--warn` inline-start border, dot, title, `.ref-row` pills, prose `body`, optional `extra`, optional `lookFor` callout — no `category` label) → optional `QA Check` checklist (`localStorage["rw-qa:" + headSha]` keyed by `"<sliceId>:<idx>"`).
-- **Cross-Cutting Card (`.card.cc`):** Rendered at the bottom only when `crossCutting` is present, containing its `Heads Up` items and/or `QA Check` checklist (persisted in `localStorage["rw-qa:" + headSha]` keyed by `"cross-cutting:<idx>"`).
-- **Print Stylesheet (`@media print`):** Forces light tokens, hides interactive chrome (`.seg`, `.ed-sel`, `.cp-btn`, `.qj`, `.sl-tog`), forces all collapsed slice bodies (`.sl-body[hidden]`) and `<details class="skim">` open, lets `.card` slices flow naturally across pages, keeps small atomic items (`.hu-item`, `.co`, `ul.chk li`) unbroken, and avoids orphaned headings (`break-after: avoid`).
+- **Cross-Cutting Card (`.card.cc`):** Rendered at the bottom only when `crossCutting` is present, starting **expanded** by default with manual collapse persisted in `localStorage["rw-collapsed:" + headSha]` under `'cross-cutting'`. Contains its `Heads Up` items and/or `QA Check` checklist (persisted in `localStorage["rw-qa:" + headSha]` keyed by `"cross-cutting:<idx>"`), and renders a live `.sl-prog` badge in its header whenever `qa` is non-empty.
+- **Print Stylesheet (`@media print`):** Forces light tokens, resets `.sl-h` to `position: static`, hides interactive chrome (`.seg`, `.ed-sel`, `.cp-btn`, `.sl-tog svg`) while keeping section headings and `.sl-prog` visible, forces all collapsed section bodies (`.sl-body[hidden]`) and `<details class="skim">` open, lets `.card` sections flow naturally across pages, keeps small atomic items (`.hu-item`, `.co`, `ul.chk li`) unbroken, and avoids orphaned headings (`break-after: avoid`).
 
 ---
 
 ## 9. Accessibility
 
-- Visible focus rings (`:focus-visible`), `aria-expanded` and `aria-controls` on slice collapse buttons, `aria-pressed` on theme buttons, semantic `<header>` / `<main>` / `<section>` / `<nav>` landmarks, `lang` and `dir` on `<html>`, and localized `aria-label`s on icon buttons.
+- Visible focus rings (`:focus-visible`), full-header `<h2 class="sl-h"><button type="button" class="sl-tog" aria-expanded="..." aria-controls="...">` toggles (using the visible title + progress text as the accessible name rather than overriding `aria-label`), `aria-pressed` on theme buttons, semantic `<header>` / `<main>` / `<section>` landmarks, `lang` and `dir` on `<html>`, and localized `aria-label`s on icon-only buttons and controls.
 
 ---
 
 ## 10. Don't
 
-No `position: sticky` or `position: fixed`, no bottom `<footer>`, no `category` badges, no auto-collapse on checkbox toggle, no more than 2 font weights (`400` and `600`), no emoji, no shadows beyond a 1px border, no hardcoded left/right, no uppercase or letter-spacing, no code snippets or diff hunks, no severity labels.
+No `position: fixed`, no sticky global `<header class="hdr">` or bottom `<footer>`, no `.qj` quick-jump pill strip, no `overflow: hidden` on `.card`, no `category` badges, no auto-collapse/auto-expand on checkbox toggle, no more than 2 font weights (`400` and `600`), no emoji, no shadows beyond a 1px border, no hardcoded left/right, no uppercase or letter-spacing, no code snippets or diff hunks, no severity labels.
 
 ---
 
@@ -325,4 +323,4 @@ No `position: sticky` or `position: fixed`, no bottom `<footer>`, no `category` 
 
 ## 12. Other Languages
 
-The template has built-in UI strings for English (`en`) and Persian (`fa`). Direction, Persian digits (`fa`), and the Vazirmatn font follow `lang`. Other languages fall back to `en` UI labels unless extended in the template (`I` object in `walkthrough-template.html`); built-in keys are `branch`, `split`, `overview`, `affects`, `headsUp`, `check`, `filesSec`, `skim`, `test`, `crossCutting`, `slices`, `collapse`, `expand`, `theme`, `sys`, `light`, `dark`, `editor`, `open`, `copy`, `copied`, `added`, `deleted`, `invalid`, `files`, `file`, and `shaHint`.
+The template has built-in UI strings for English (`en`) and Persian (`fa`). Direction, Persian digits (`fa`), and the Vazirmatn font follow `lang`. Other languages fall back to `en` UI labels unless extended in the template (`I` object in `walkthrough-template.html`); built-in keys are `branch`, `split`, `overview`, `affects`, `headsUp`, `check`, `filesSec`, `skim`, `test`, `crossCutting`, `theme`, `sys`, `light`, `dark`, `editor`, `open`, `copy`, `copied`, `added`, `deleted`, `invalid`, `files`, `file`, and `shaHint`.

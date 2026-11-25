@@ -227,8 +227,9 @@ def _render_heads_up_and_qa(
 def render_markdown(data: Dict[str, Any]) -> str:
     """Deterministically render a vertical, anti-fatigue Markdown review walkthrough."""
     lang = data.get("lang", "en")
-    is_fa = lang.lower().startswith("fa")
-    is_rtl = lang.lower().startswith(("fa", "ar", "he", "ur"))
+    base_lang = (lang or "en").split("-")[0].lower()
+    is_fa = base_lang == "fa"
+    is_rtl = base_lang in {"fa", "ar", "he", "ur", "ps", "ku", "yi", "dv"}
     labels = get_labels(lang)
     meta = data["meta"]
     stats = meta["stats"]
@@ -244,10 +245,11 @@ def render_markdown(data: Dict[str, Any]) -> str:
     lines: List[str] = []
 
     # Header
+    branch_arrow = "←" if is_rtl else "→"
     lines.append(f"# {labels['title_prefix']} {fix_rtl_arrows(meta['title'], is_rtl)}")
     lines.append("")
     lines.append(
-        f"**{labels['branch']}** `{meta['branch']}` → `{meta['base']}` • "
+        f"**{labels['branch']}** `{meta['branch']}` {branch_arrow} `{meta['base']}` • "
         f"**{files_str} (+{stats['added']} / -{stats['removed']})**"
     )
     lines.append(

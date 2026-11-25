@@ -268,7 +268,7 @@ class TestWalkthroughGenerator(unittest.TestCase):
     def test_render_markdown_persian(self):
         md = render_markdown(self.sample_data_fa)
         self.assertIn("# راهنمای بررسی: مدیریت توکن احراز هویت", md)
-        self.assertIn("**برنچ:** `feat/token-refresh` → `main` • **۲ فایل (+50 / -10)**", md)
+        self.assertIn("**برنچ:** `feat/token-refresh` ← `main` • **۲ فایل (+50 / -10)**", md)
         self.assertIn("**بخش‌های تحت‌تأثیر:** ماژول احراز هویت و مدیریت نشست‌ها", md)
         self.assertIn("### خلاصه تغییرات", md)
         self.assertIn("بررسی گذرا (۱ فایل)", md)
@@ -277,6 +277,21 @@ class TestWalkthroughGenerator(unittest.TestCase):
         self.assertIn("### نکات حساس و ریسک‌ها", md)
         self.assertIn("### مواردی که باید تست شوند", md)
         self.assertIn("- [ ] تست انقضای توکن با JWT منقضی.", md)
+
+    def test_render_markdown_branch_arrow_direction_by_lang(self):
+        for rtl_lang in ("fa", "fa-IR", "ar", "he", "ur", "ps", "ku"):
+            data = copy.deepcopy(self.sample_data_en)
+            data["lang"] = rtl_lang
+            md = render_markdown(data)
+            self.assertIn("`feat/token-refresh` ← `main`", md, f"Expected ← for {rtl_lang}")
+            self.assertNotIn("`feat/token-refresh` → `main`", md)
+
+        for ltr_lang in ("en", "en-US", "de", "es"):
+            data = copy.deepcopy(self.sample_data_en)
+            data["lang"] = ltr_lang
+            md = render_markdown(data)
+            self.assertIn("`feat/token-refresh` → `main`", md, f"Expected → for {ltr_lang}")
+            self.assertNotIn("`feat/token-refresh` ← `main`", md)
 
     def test_render_html_inlines_json(self):
         fake_template = (

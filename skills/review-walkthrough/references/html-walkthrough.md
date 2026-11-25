@@ -39,7 +39,7 @@ Authoritative spec for the HTML companion that `review-walkthrough` generates ne
   },
   "repo": {
     "root":          "optional absolute path of the working tree on this machine",
-    "defaultEditor": "vscode (default) | cursor | windsurf | zed | android-studio | goland | idea | copy"
+    "defaultEditor": "vscode (default) | vscode-insiders | cursor | windsurf | vscodium | zed | android-studio | studio | goland | idea | webstorm | pycharm | copy"
   },
   "overview": { ... },
   "slices": [ ... ],
@@ -179,12 +179,12 @@ The top header includes an editor selector dropdown allowing reviewers to choose
 - **JetBrains / IntelliJ** (`idea`)
 - **Copy Only** (`copy`)
 
-The selected editor is saved across sessions in `localStorage["rw-editor"]`. Initial default is loaded from `repo.defaultEditor` (or falls back to `vscode`).
+The selected editor is saved across sessions in `localStorage["rw-editor"]`. Initial default is loaded from `repo.defaultEditor` (or falls back to `vscode`). Schema-accepted aliases (`vscode-insiders`, `vscodium`, `webstorm`, `pycharm`, and `studio` normalized to `android-studio`) are also honored when set via `repo.defaultEditor` or `localStorage["rw-editor"]` and included in the dropdown when active.
 
 ### URL Construction (by Editor)
-- **VS Code / Cursor / Windsurf:** `{editor}://file/{root}/{path}:{startLine}`
+- **VS Code / Cursor / Windsurf / VSCodium / VS Code Insiders:** `{editor}://file/{root}/{path}:{startLine}`
 - **Zed:** `zed://file/{root}/{path}:{startLine}`
-- **GoLand:** `goland://open?file={root}/{path}&line={startLine}`
+- **GoLand / WebStorm / PyCharm:** `{editor}://open?file={root}/{path}&line={startLine}`
 - **Android Studio / JetBrains (IntelliJ):** `idea://open?file={root}/{path}&line={startLine}`
 - **Copy Only:** No link is rendered; clicking `.cp-btn` copies the relative path to clipboard.
 - **Normalization:** Root path backslashes convert to forward slashes; trailing slashes are stripped. Each path segment is percent-encoded via `encodeURIComponent` and rejoined with `/`. Only `startLine` is included in the URL.
@@ -229,9 +229,10 @@ The selected editor is saved across sessions in `localStorage["rw-editor"]`. Ini
 | Slices | بخش‌ها |
 | Collapse slice / Expand slice | بستن بخش / باز کردن بخش |
 | Theme: System / Light / Dark | پوسته: خودکار / روشن / تیره |
+| Editor | ویرایشگر |
 | Open in editor | باز کردن در ویرایشگر |
 | Copy path / Copied! | کپی مسیر / کپی شد! |
-| Deleted | حذف‌شده |
+| Added / Deleted | اضافه‌شده / حذف‌شده |
 | Invalid walkthrough data | داده‌های راهنما نامعتبر است |
 
 ---
@@ -255,7 +256,7 @@ The template delivers an ultra-lean footprint (~25 KB total file size) with zero
 - Directional flow in RTL: Any textual progression arrow (`→`, `➔`, `➜`, `->`) outside code spans is automatically normalized to `←` (`U+2190`) when `dir="rtl"`. The branch header arrow renders direction-aware (`←` in RTL, `→` in LTR).
 
 ### Bidi (mixed Persian and Latin)
-- Every Latin run (identifier, path, flag, branch, hash, version, code) is wrapped by the renderer in `<bdi>` or `<code dir="ltr">` with `unicode-bidi: isolate`, so punctuation never scrambles.
+- Contiguous Latin/ASCII phrases (identifiers, multi-word terms, paths, flags, branches, hashes, versions) are wrapped by the renderer in a single `<bdi dir="ltr">` (or `<code dir="ltr">` for backticked code) with `unicode-bidi: isolate`, keeping trailing punctuation outside `<bdi>` so word order and punctuation never scramble.
 - Diff stats (`+120 / −30`) render as `<bdi dir="ltr">` isolates with Latin digits.
 
 ### Typography
@@ -300,7 +301,7 @@ The template delivers an ultra-lean footprint (~25 KB total file size) with zero
   - Manual collapse state persists in `localStorage["rw-collapsed:" + headSha]` as an array of collapsed slice IDs. Checking off files or QA items **never** auto-collapses a slice.
   - Inside each slice (`.sl-body`): prose `summary` → `Files` checklist (`localStorage["rw-files:" + headSha]` keyed by `"<sliceId>:<idx>"`) → optional `Heads Up` list (`.hu-item` with `--warn` inline-start border, dot, title, `.ref-row` pills, prose `body`, optional `extra`, optional `lookFor` callout — no `category` label) → optional `QA Check` checklist (`localStorage["rw-qa:" + headSha]` keyed by `"<sliceId>:<idx>"`).
 - **Cross-Cutting Card (`.card.cc`):** Rendered at the bottom only when `crossCutting` is present, containing its `Heads Up` items and/or `QA Check` checklist (persisted in `localStorage["rw-qa:" + headSha]` keyed by `"cross-cutting:<idx>"`).
-- **Print Stylesheet (`@media print`):** Forces light tokens, hides interactive chrome (`.seg`, `.ed-sel`, `.cp-btn`, `.qj`, `.sl-tog`), and forces all collapsed slice bodies (`.sl-body[hidden]`) and `<details class="skim">` open.
+- **Print Stylesheet (`@media print`):** Forces light tokens, hides interactive chrome (`.seg`, `.ed-sel`, `.cp-btn`, `.qj`, `.sl-tog`), forces all collapsed slice bodies (`.sl-body[hidden]`) and `<details class="skim">` open, lets `.card` slices flow naturally across pages, keeps small atomic items (`.hu-item`, `.co`, `ul.chk li`) unbroken, and avoids orphaned headings (`break-after: avoid`).
 
 ---
 
@@ -324,4 +325,4 @@ No `position: sticky` or `position: fixed`, no bottom `<footer>`, no `category` 
 
 ## 12. Other Languages
 
-The template has built-in UI strings for English (`en`) and Persian (`fa`). Direction, Persian digits (`fa`), and the Vazirmatn font follow `lang`. Other languages fall back to `en` UI labels unless extended in the template (`I` object in `walkthrough-template.html`); built-in keys are `branch`, `split`, `overview`, `affects`, `headsUp`, `check`, `filesSec`, `skim`, `test`, `crossCutting`, `slices`, `collapse`, `expand`, `theme`, `sys`, `light`, `dark`, `open`, `copy`, `copied`, `deleted`, `invalid`, `files`, `file`, and `shaHint`.
+The template has built-in UI strings for English (`en`) and Persian (`fa`). Direction, Persian digits (`fa`), and the Vazirmatn font follow `lang`. Other languages fall back to `en` UI labels unless extended in the template (`I` object in `walkthrough-template.html`); built-in keys are `branch`, `split`, `overview`, `affects`, `headsUp`, `check`, `filesSec`, `skim`, `test`, `crossCutting`, `slices`, `collapse`, `expand`, `theme`, `sys`, `light`, `dark`, `editor`, `open`, `copy`, `copied`, `added`, `deleted`, `invalid`, `files`, `file`, and `shaHint`.

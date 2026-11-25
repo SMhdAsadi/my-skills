@@ -102,8 +102,8 @@ class TestWalkthroughTemplate(unittest.TestCase):
         size_kb = len(self.content.encode("utf-8")) / 1024
         self.assertLess(
             size_kb,
-            25,
-            f"Template size is {size_kb:.1f} KB, expected < 25 KB without base64 bloat",
+            28,
+            f"Template size is {size_kb:.1f} KB, expected < 28 KB without base64 bloat",
         )
 
     def test_no_embedded_base64_or_external_cdns(self):
@@ -133,6 +133,17 @@ class TestWalkthroughTemplate(unittest.TestCase):
         self.assertIn("shaHint", self.content)
         self.assertIn(".sl-body[hidden]{display:block!important}", css)
         self.assertIn(".qj,.sl-tog{display:none!important}", css)
+
+    def test_print_rules_allow_card_flow_and_keep_atomic_items(self):
+        css = re.search(r"<style>(.*?)</style>", self.content, re.DOTALL).group(1)
+        print_blocks = re.findall(r"@media print\{(.*)\}", css)
+        self.assertTrue(print_blocks, "Expected @media print blocks")
+        pb = "\n".join(print_blocks)
+        self.assertNotRegex(pb, r"\.card\{[^}]*break-inside\s*:\s*avoid")
+        self.assertRegex(pb, r"\.hu-item[^}]*break-inside\s*:\s*avoid")
+        self.assertRegex(pb, r"\.co[^}]*break-inside\s*:\s*avoid")
+        self.assertRegex(pb, r"ul\.chk li[^}]*break-inside\s*:\s*avoid")
+        self.assertRegex(pb, r"break-after\s*:\s*avoid")
 
     def test_editor_schemes_supported(self):
         for ed in ["vscode", "cursor", "windsurf", "zed", "android-studio", "goland", "idea", "copy"]:
@@ -200,11 +211,13 @@ const minimal = {json.dumps(minimal)};
 function makeEl(tag) {{
   const el = {{
     tagName: String(tag || 'DIV').toUpperCase(),
+    parentNode: null,
     children: [],
     attrs: {{}},
     className: '',
     textContent: '',
     value: '',
+    selected: false,
     checked: false,
     disabled: false,
     hidden: false,
@@ -223,21 +236,41 @@ function makeEl(tag) {{
     append(...nodes) {{
       for (const n of nodes) {{
         if (n == null || n === false) continue;
-        this.children.push(typeof n === 'string' ? {{ nodeType: 3, textContent: n }} : n);
+        const ch = typeof n === 'string' ? {{ nodeType: 3, textContent: n, parentNode: this }} : n;
+        ch.parentNode = this;
+        this.children.push(ch);
       }}
     }},
     replaceChildren(...nodes) {{
       this.children = [];
       this.append(...nodes);
     }},
+    replaceWith(n) {{
+      if (!this.parentNode) return;
+      const idx = this.parentNode.children.indexOf(this);
+      if (idx >= 0) {{
+        n.parentNode = this.parentNode;
+        this.parentNode.children[idx] = n;
+        this.parentNode = null;
+      }}
+    }},
     querySelector(sel) {{ return this.querySelectorAll(sel)[0] || null; }},
     querySelectorAll(sel) {{
       const out = [];
+      const match = (c) => {{
+        const cls = (c.className || '').split(/\\s+/);
+        if (sel.startsWith('.')) return sel.slice(1).split('.').every(k => cls.includes(k));
+        const dotIdx = sel.indexOf('.');
+        if (dotIdx > 0) {{
+          return c.tagName.toLowerCase() === sel.slice(0, dotIdx) && sel.slice(dotIdx + 1).split('.').every(k => cls.includes(k));
+        }}
+        return sel === c.tagName.toLowerCase();
+      }};
       const walk = (node) => {{
         if (!node || !node.children) return;
         for (const c of node.children) {{
           if (c.tagName) {{
-            if (sel === c.tagName.toLowerCase() || (sel.startsWith('.') && (c.className || '').split(/\\s+/).includes(sel.slice(1)))) {{
+            if (match(c)) {{
               out.push(c);
             }}
             walk(c);
@@ -482,14 +515,33 @@ if (skimPrint.open) throw new Error('afterprint must restore closed <details cla
 const faPayload = {{
   schemaVersion: 3,
   lang: 'fa',
-  meta: {{ title: 'تست A → B', branch: 'feat/rtl', base: 'main', headSha: 'ff00aa1', stats: {{ files: 1, added: 5, removed: 1 }} }},
-  overview: {{ title: 'نمای کلی', affects: 'بخش A → B', skim: ['README.md'] }},
+  meta: {{ title: 'بازبینی review-walkthrough v4.0.0 و **Vertical Slice**', branch: 'feat/rtl', base: 'main', headSha: 'ff00aa1', stats: {{ files: 3, added: 5, removed: 1 }} }},
+  overview: {{ title: 'نمای کلی Schema v3: خروجی HTML/Markdown', affects: 'بخش A → B، API, و `build()`', skim: ['README.md'] }},
   slices: [{{
-    id: 'rtl-slice',
-    title: 'بخش اول',
-    summary: ['توضیح A → B'],
+    id: 'rtl-slice-1',
+    title: 'بخش Vertical Slice اول',
+    summary: ['توضیح Schema v3 در `build()` و جستجوی Ctrl+F برای بخش اول.'],
     files: [{{ role: 'سرویس', path: 'src/a.ts', startLine: 1, summary: 'تغییر A → B' }}],
-    qa: ['تست اول']
+    headsUp: [{{
+      title: 'نکته review-walkthrough v4.0.0: ترتیب کلمات',
+      body: 'این عبارت Schema v3 نباید برعکس بشه.',
+      refs: [{{ path: 'src/a.ts', startLine: 1 }}],
+      lookFor: 'بررسی Vertical Slice در خروجی'
+    }}],
+    qa: ['تست خروجی HTML/Markdown با `edUrl()`']
+  }}, {{
+    id: 'rtl-slice-2',
+    title: 'بخش دوم',
+    summary: ['خلاصه دوم'],
+    files: [
+      {{ role: 'دوم', path: 'src/b.ts', startLine: 1, status: 'added', summary: 'فایل دوم.' }},
+      {{ role: 'حذف‌شده', path: 'src/old.ts', startLine: 1, status: 'deleted', summary: 'فایل قدیمی.' }}
+    ]
+  }}, {{
+    id: 'rtl-slice-3',
+    title: 'بخش سوم',
+    summary: ['خلاصه سوم'],
+    files: [{{ role: 'سوم', path: 'src/c.ts', startLine: 1, summary: 'فایل سوم.' }}]
   }}]
 }};
 storage.clear();
@@ -501,6 +553,147 @@ const faProg = appEl.querySelector('.sl-prog').textContent;
 if (faProg !== '۰/۲') throw new Error('Expected Persian digits ۰/۲ in progress, got ' + faProg);
 const faDump = textDump(appEl);
 if (!faDump.includes('←')) throw new Error('Expected RTL arrow ← in Persian render');
+
+const bdiTexts = appEl.querySelectorAll('bdi').map(b => b.textContent);
+const bdiDirs = appEl.querySelectorAll('bdi').map(b => b.getAttribute('dir'));
+if (bdiDirs.some(d => d !== 'ltr')) {{
+  throw new Error('Every <bdi> in RTL rich() must have dir="ltr", got: ' + JSON.stringify(bdiDirs));
+}}
+for (const phrase of ['review-walkthrough v4.0.0', 'Vertical Slice', 'Schema v3', 'HTML/Markdown', 'Ctrl+F']) {{
+  if (!bdiTexts.includes(phrase)) {{
+    throw new Error('Expected contiguous <bdi dir="ltr"> for "' + phrase + '", got: ' + JSON.stringify(bdiTexts));
+  }}
+}}
+if (bdiTexts.some(t => /[:,]$/.test(t))) {{
+  throw new Error('Trailing punctuation (: or ,) must stay outside <bdi>, got: ' + JSON.stringify(bdiTexts));
+}}
+const strongBdis = appEl.querySelector('h1').querySelectorAll('strong bdi').length
+  ? appEl.querySelector('h1').querySelectorAll('strong bdi')
+  : appEl.querySelector('h1').querySelector('strong').querySelectorAll('bdi');
+if (!strongBdis.length || strongBdis[0].textContent !== 'Vertical Slice' || strongBdis[0].getAttribute('dir') !== 'ltr') {{
+  throw new Error('Expected **Vertical Slice** to wrap <bdi dir="ltr"> inside <strong>');
+}}
+const codeEls = appEl.querySelectorAll('code').map(c => ({{ text: c.textContent, dir: c.getAttribute('dir') }}));
+if (!codeEls.some(c => c.text === 'build()' && c.dir === 'ltr') || !codeEls.some(c => c.text === 'edUrl()' && c.dir === 'ltr')) {{
+  throw new Error('Expected backticked code spans as <code dir="ltr">, got: ' + JSON.stringify(codeEls));
+}}
+const qjFirstBdi = appEl.querySelector('.qj-pill').querySelector('bdi');
+if (!qjFirstBdi || qjFirstBdi.textContent !== 'Vertical Slice' || qjFirstBdi.getAttribute('dir') !== 'ltr') {{
+  throw new Error('Expected quick-jump pill to keep Vertical Slice in one <bdi dir="ltr">');
+}}
+const faEdSel = appEl.querySelector('.ed-sel');
+if (faEdSel.getAttribute('aria-label') !== 'ویرایشگر') {{
+  throw new Error('Expected Persian aria-label ویرایشگر on .ed-sel, got ' + faEdSel.getAttribute('aria-label'));
+}}
+const faAddDot = appEl.querySelector('.std.add');
+const faDelDot = appEl.querySelector('.std.del');
+if (!faAddDot || faAddDot.getAttribute('title') !== 'اضافه‌شده') {{
+  throw new Error('Expected localized added dot title اضافه‌شده, got ' + (faAddDot && faAddDot.getAttribute('title')));
+}}
+if (!faDelDot || faDelDot.getAttribute('title') !== 'حذف‌شده') {{
+  throw new Error('Expected localized deleted dot title حذف‌شده, got ' + (faDelDot && faDelDot.getAttribute('title')));
+}}
+
+// 3d. Deleted file pill integrity on IDE switch
+const delPayload = JSON.parse(JSON.stringify(valid));
+delPayload.slices[0].files.push({{
+  role: 'Removed helper',
+  path: 'src/auth/legacy.ts',
+  startLine: 10,
+  status: 'deleted',
+  summary: 'Legacy token helper removed.'
+}}, {{
+  role: 'Added helper',
+  path: 'src/auth/fresh.ts',
+  startLine: 5,
+  status: 'added',
+  summary: 'New token helper added.'
+}});
+storage.clear();
+dataEl.textContent = JSON.stringify(delPayload);
+appEl.children = [];
+vm.runInNewContext(patched, sandbox);
+const edSel = appEl.querySelector('.ed-sel');
+if (!edSel) throw new Error('Expected .ed-sel');
+if (edSel.getAttribute('aria-label') !== 'Editor') {{
+  throw new Error('Expected English aria-label Editor on .ed-sel, got ' + edSel.getAttribute('aria-label'));
+}}
+const enAddDot = appEl.querySelector('.std.add');
+const enDelDot = appEl.querySelector('.std.del');
+if (!enAddDot || enAddDot.getAttribute('title') !== 'Added') {{
+  throw new Error('Expected English added dot title Added, got ' + (enAddDot && enAddDot.getAttribute('title')));
+}}
+if (!enDelDot || enDelDot.getAttribute('title') !== 'Deleted') {{
+  throw new Error('Expected English deleted dot title Deleted, got ' + (enDelDot && enDelDot.getAttribute('title')));
+}}
+const checkDeletedPill = (expectedSchemePrefix) => {{
+  const pills = appEl.querySelectorAll('.ref-pill');
+  const modPill = pills.find(p => p.getAttribute('data-path') === 'src/auth/token.ts');
+  const addPill = pills.find(p => p.getAttribute('data-path') === 'src/auth/fresh.ts');
+  const delPill = pills.find(p => p.getAttribute('data-path') === 'src/auth/legacy.ts');
+  if (!modPill || !addPill || !delPill) throw new Error('Missing expected ref pills');
+  const modA = modPill.querySelector('a.rl');
+  const addA = addPill.querySelector('a.rl');
+  if (!modA || !modA.getAttribute('href').startsWith(expectedSchemePrefix)) {{
+    throw new Error('Expected modified pill href starting with ' + expectedSchemePrefix + ', got ' + (modA && modA.getAttribute('href')));
+  }}
+  if (!addA || !addA.getAttribute('href').startsWith(expectedSchemePrefix)) {{
+    throw new Error('Expected added pill href starting with ' + expectedSchemePrefix + ', got ' + (addA && addA.getAttribute('href')));
+  }}
+  if (delPill.querySelector('a.rl')) {{
+    throw new Error('Deleted file pill must NEVER become <a class="rl">');
+  }}
+  if (!delPill.querySelector('span.rl')) {{
+    throw new Error('Deleted file pill must remain <span class="rl">');
+  }}
+}};
+checkDeletedPill('vscode://file');
+edSel.value = 'cursor';
+edSel.onchange();
+checkDeletedPill('cursor://file');
+edSel.value = 'zed';
+edSel.onchange();
+checkDeletedPill('zed://file');
+
+// 3e. Editor alias parity (webstorm, pycharm, vscode-insiders, vscodium, studio -> android-studio)
+const assertActiveEditor = (ctx, expectedVal, expectedLabel, expectedPrefix) => {{
+  const sel = appEl.querySelector('.ed-sel');
+  const opt = sel.querySelectorAll('option').find(o => o.value === expectedVal || o.getAttribute('value') === expectedVal);
+  if (!opt || !opt.selected || opt.textContent !== expectedLabel || sel.value !== expectedVal) {{
+    throw new Error(ctx + ' failed select option/state check: ' + JSON.stringify({{ opt, selVal: sel.value }}));
+  }}
+  const href = appEl.querySelector('.ref-pill').querySelector('a.rl').getAttribute('href');
+  if (!href.startsWith(expectedPrefix)) {{
+    throw new Error(ctx + ' expected href prefix ' + expectedPrefix + ', got ' + href);
+  }}
+}};
+const aliasCases = [
+  ['webstorm', 'webstorm', 'WebStorm', 'webstorm://open?file='],
+  ['pycharm', 'pycharm', 'PyCharm', 'pycharm://open?file='],
+  ['vscode-insiders', 'vscode-insiders', 'VS Code Insiders', 'vscode-insiders://file'],
+  ['vscodium', 'vscodium', 'VSCodium', 'vscodium://file'],
+  ['studio', 'android-studio', 'Android Studio', 'idea://open?file='],
+];
+for (const [inputEd, expectedVal, expectedLabel, expectedPrefix] of aliasCases) {{
+  // Via repo.defaultEditor
+  storage.clear();
+  const p1 = JSON.parse(JSON.stringify(valid));
+  p1.repo.defaultEditor = inputEd;
+  dataEl.textContent = JSON.stringify(p1);
+  appEl.children = [];
+  vm.runInNewContext(patched, sandbox);
+  assertActiveEditor('defaultEditor=' + inputEd, expectedVal, expectedLabel, expectedPrefix);
+
+  // Via localStorage['rw-editor'] overriding defaultEditor='vscode'
+  storage.clear();
+  storage.set('rw-editor', inputEd);
+  const p2 = JSON.parse(JSON.stringify(valid));
+  p2.repo.defaultEditor = 'vscode';
+  dataEl.textContent = JSON.stringify(p2);
+  appEl.children = [];
+  vm.runInNewContext(patched, sandbox);
+  assertActiveEditor('localStorage rw-editor=' + inputEd, expectedVal, expectedLabel, expectedPrefix);
+}}
 
 // 4. Verify invalid payload renders invalid-data card without crashing
 dataEl.textContent = JSON.stringify({{ schemaVersion: 2 }});

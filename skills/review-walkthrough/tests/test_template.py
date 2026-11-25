@@ -131,6 +131,8 @@ class TestWalkthroughTemplate(unittest.TestCase):
         self.assertNotIn("h('footer'", self.content)
         self.assertNotIn(".card[hidden]", self.content)
         self.assertIn("shaHint", self.content)
+        self.assertIn(".sl-body[hidden]{display:block!important}", css)
+        self.assertIn(".qj,.sl-tog{display:none!important}", css)
 
     def test_editor_schemes_supported(self):
         for ed in ["vscode", "cursor", "windsurf", "zed", "android-studio", "goland", "idea", "copy"]:
@@ -205,6 +207,7 @@ function makeEl(tag) {{
     value: '',
     checked: false,
     disabled: false,
+    hidden: false,
     classList: {{
       _set: new Set(),
       add(c) {{ this._set.add(c); }},
@@ -347,6 +350,157 @@ if (!dumped.includes('Token Refresh Flow')) throw new Error('Missing title');
 if (!dumped.includes('Deduplicate concurrent token refresh')) throw new Error('Missing slice 1');
 if (!dumped.includes('Evict stale credentials on failure')) throw new Error('Missing slice 2');
 if (!dumped.includes('Cross-Cutting Notes')) throw new Error('Missing crossCutting');
+
+// 3a. Quick-jump bar: absent for 2 slices, present for 3 slices
+if (appEl.querySelectorAll('.qj').length !== 0) {{
+  throw new Error('Quick-jump bar must NOT render when slices.length <= 2');
+}}
+const threeSlices = JSON.parse(JSON.stringify(valid));
+threeSlices.slices.push({{
+  id: 'audit-logging',
+  title: 'Emit refresh audit logs',
+  summary: ['Logs token refresh outcomes.'],
+  files: [{{ role: 'Logger', path: 'src/audit.ts', startLine: 1, summary: 'Adds audit events.' }}]
+}});
+dataEl.textContent = JSON.stringify(threeSlices);
+appEl.children = [];
+vm.runInNewContext(patched, sandbox);
+const qjBars = appEl.querySelectorAll('.qj');
+if (qjBars.length !== 1) throw new Error('Quick-jump bar must render when slices.length > 2');
+const qjLinks = qjBars[0].querySelectorAll('a');
+if (qjLinks.length !== 3) throw new Error('Expected 3 quick-jump links, got ' + qjLinks.length);
+if (qjLinks[2].getAttribute('href') !== '#slice-audit-logging') {{
+  throw new Error('Unexpected quick-jump href: ' + qjLinks[2].getAttribute('href'));
+}}
+
+// 3b. Collapsible slices, live progress, never auto-collapse, & localStorage persistence
+storage.clear();
+dataEl.textContent = JSON.stringify(valid);
+appEl.children = [];
+vm.runInNewContext(patched, sandbox);
+
+const sliceEls = appEl.querySelectorAll('.slice');
+if (sliceEls.length !== 2) throw new Error('Expected 2 slice elements');
+const s1Tog = sliceEls[0].querySelector('.sl-tog');
+const s1Body = sliceEls[0].querySelector('.sl-body');
+const s1Prog = sliceEls[0].querySelector('.sl-prog');
+const s2Tog = sliceEls[1].querySelector('.sl-tog');
+const s2Body = sliceEls[1].querySelector('.sl-body');
+const s2Prog = sliceEls[1].querySelector('.sl-prog');
+
+if (!s1Tog || !s1Body || !s1Prog) throw new Error('Slice 1 missing toggle/body/progress');
+if (s1Tog.getAttribute('aria-expanded') !== 'true' || s1Body.hidden !== false) {{
+  throw new Error('Slice 1 must start expanded');
+}}
+if (s1Prog.textContent !== '0/2') throw new Error('Expected Slice 1 progress 0/2, got ' + s1Prog.textContent);
+if (s2Prog.textContent !== '0/1') throw new Error('Expected Slice 2 progress 0/1, got ' + s2Prog.textContent);
+
+// Check file 0 in Slice 1 -> updates progress, never auto-collapses, does not affect Slice 2
+const s1Checks = sliceEls[0].querySelectorAll('input');
+s1Checks[0].checked = true;
+s1Checks[0].onchange();
+if (s1Prog.textContent !== '1/2') throw new Error('Expected Slice 1 progress 1/2 after check, got ' + s1Prog.textContent);
+if (s1Tog.getAttribute('aria-expanded') !== 'true' || s1Body.hidden !== false) {{
+  throw new Error('Checking item must NEVER auto-collapse slice');
+}}
+const savedFiles = JSON.parse(storage.get('rw-files:a1b2c3d') || '[]');
+if (savedFiles.length !== 1 || savedFiles[0] !== 'token-refresh:0') {{
+  throw new Error('Unexpected rw-files persistence: ' + JSON.stringify(savedFiles));
+}}
+
+// Collapse Slice 1 -> persists in rw-collapsed:a1b2c3d
+s1Tog.onclick();
+if (s1Tog.getAttribute('aria-expanded') !== 'false' || s1Body.hidden !== true) {{
+  throw new Error('Slice 1 should be collapsed after toggle');
+}}
+const savedCollapsed = JSON.parse(storage.get('rw-collapsed:a1b2c3d') || '[]');
+if (savedCollapsed.length !== 1 || savedCollapsed[0] !== 'token-refresh') {{
+  throw new Error('Unexpected rw-collapsed persistence: ' + JSON.stringify(savedCollapsed));
+}}
+
+// Reload with persisted storage -> Slice 1 stays collapsed with 1/2, Slice 2 stays expanded & unchecked
+appEl.children = [];
+vm.runInNewContext(patched, sandbox);
+const reloadedSlices = appEl.querySelectorAll('.slice');
+if (reloadedSlices[0].querySelector('.sl-tog').getAttribute('aria-expanded') !== 'false') {{
+  throw new Error('Slice 1 collapsed state did not persist across reload');
+}}
+if (reloadedSlices[0].querySelector('.sl-prog').textContent !== '1/2') {{
+  throw new Error('Slice 1 progress did not persist across reload');
+}}
+if (reloadedSlices[1].querySelector('.sl-tog').getAttribute('aria-expanded') !== 'true') {{
+  throw new Error('Slice 2 should remain expanded');
+}}
+if (reloadedSlices[1].querySelector('input').checked !== false) {{
+  throw new Error('Slice 2 same-path file must remain unchecked');
+}}
+
+// 3c. QA persistence across slice & crossCutting, duplicate basename disambiguation, IDE URLs, print beforeprint/afterprint, & RTL
+const s1QaCheck = reloadedSlices[0].querySelectorAll('input')[1];
+s1QaCheck.checked = true;
+s1QaCheck.onchange();
+const ccQaCheck = appEl.querySelector('.cc').querySelector('input');
+ccQaCheck.checked = true;
+ccQaCheck.onchange();
+const savedQa = JSON.parse(storage.get('rw-qa:a1b2c3d') || '[]');
+if (!savedQa.includes('token-refresh:0') || !savedQa.includes('cross-cutting:0')) {{
+  throw new Error('Unexpected rw-qa persistence: ' + JSON.stringify(savedQa));
+}}
+
+// Duplicate basename disambiguation across slice + crossCutting
+const dupPayload = JSON.parse(JSON.stringify(valid));
+dupPayload.slices[0].files.push({{ role: 'Index A', path: 'src/a/index.ts', startLine: 1, summary: 'Module A.' }});
+dupPayload.crossCutting.headsUp[0].refs = [{{ path: 'src/b/index.ts', startLine: 5 }}];
+dataEl.textContent = JSON.stringify(dupPayload);
+appEl.children = [];
+vm.runInNewContext(patched, sandbox);
+const dupDump = textDump(appEl);
+if (!dupDump.includes('…/a/index.ts:1') || !dupDump.includes('…/b/index.ts:5')) {{
+  throw new Error('Duplicate basename disambiguation failed across slices/crossCutting');
+}}
+
+// Print beforeprint / afterprint opens & restores <details class="skim">
+const skimEl = appEl.querySelector('details');
+if (!skimEl) throw new Error('Expected <details class="skim">');
+if (skimEl.open) throw new Error('Skim <details> must start closed');
+const listeners = {{}};
+const printSandbox = Object.assign({{}}, sandbox, {{
+  addEventListener: (ev, fn) => {{ (listeners[ev] = listeners[ev] || []).push(fn); }},
+}});
+appEl.children = [];
+vm.runInNewContext(patched, printSandbox);
+const skimPrint = appEl.querySelector('details');
+if (!listeners.beforeprint || !listeners.beforeprint.length) {{
+  throw new Error('Expected beforeprint listener for auto-expanding skim details');
+}}
+listeners.beforeprint.forEach(fn => fn());
+if (!skimPrint.open) throw new Error('beforeprint must open <details class="skim">');
+if (listeners.afterprint) listeners.afterprint.forEach(fn => fn());
+if (skimPrint.open) throw new Error('afterprint must restore closed <details class="skim">');
+
+// RTL Persian rendering in Node
+const faPayload = {{
+  schemaVersion: 3,
+  lang: 'fa',
+  meta: {{ title: 'تست A → B', branch: 'feat/rtl', base: 'main', headSha: 'ff00aa1', stats: {{ files: 1, added: 5, removed: 1 }} }},
+  overview: {{ title: 'نمای کلی', affects: 'بخش A → B', skim: ['README.md'] }},
+  slices: [{{
+    id: 'rtl-slice',
+    title: 'بخش اول',
+    summary: ['توضیح A → B'],
+    files: [{{ role: 'سرویس', path: 'src/a.ts', startLine: 1, summary: 'تغییر A → B' }}],
+    qa: ['تست اول']
+  }}]
+}};
+storage.clear();
+dataEl.textContent = JSON.stringify(faPayload);
+appEl.children = [];
+vm.runInNewContext(patched, sandbox);
+if (sandbox.document.documentElement.dir !== 'rtl') throw new Error('Expected dir=rtl for fa');
+const faProg = appEl.querySelector('.sl-prog').textContent;
+if (faProg !== '۰/۲') throw new Error('Expected Persian digits ۰/۲ in progress, got ' + faProg);
+const faDump = textDump(appEl);
+if (!faDump.includes('←')) throw new Error('Expected RTL arrow ← in Persian render');
 
 // 4. Verify invalid payload renders invalid-data card without crashing
 dataEl.textContent = JSON.stringify({{ schemaVersion: 2 }});

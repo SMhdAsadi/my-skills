@@ -1,7 +1,7 @@
 """Deterministic generator for review walkthrough deliverables.
 
 Renders both review-walkthrough.md and review-walkthrough.html from a single
-validated review-walkthrough.json file in milliseconds.
+validated Schema v3 review-walkthrough.json file in milliseconds.
 """
 
 import json
@@ -49,52 +49,60 @@ LOCALIZED_LABELS = {
         "branch": "Branch:",
         "affects": "Affects:",
         "split": "Split Recommendation",
-        "gist": "The Gist",
+        "overview": "Overview",
         "heads_up": "Heads Up",
-        "reading": "Suggested Reading Order",
-        "skim": "Skim:",
+        "files_section": "Files",
+        "skim": "Skim",
         "test": "What to Test",
         "files": "files",
+        "file_singular": "file",
         "check": "Check:",
+        "cross_cutting": "Cross-Cutting",
     },
     "fa": {
         "title_prefix": "راهنمای بررسی:",
         "branch": "برنچ:",
         "affects": "بخش‌های تحت‌تأثیر:",
         "split": "پیشنهاد تفکیک برنچ",
-        "gist": "خلاصه تغییرات",
+        "overview": "خلاصه تغییرات",
         "heads_up": "نکات حساس و ریسک‌ها",
-        "reading": "ترتیب پیشنهادی بررسی",
-        "skim": "بررسی گذرا:",
+        "files_section": "فایل‌ها",
+        "skim": "بررسی گذرا",
         "test": "مواردی که باید تست شوند",
         "files": "فایل",
+        "file_singular": "فایل",
         "check": "بررسی کنید:",
+        "cross_cutting": "نکات مشترک بین بخش‌ها",
     },
     "de": {
         "title_prefix": "Review-Überblick:",
         "branch": "Branch:",
         "affects": "Betrifft:",
         "split": "Aufteilungsempfehlung",
-        "gist": "Das Wichtigste",
+        "overview": "Überblick",
         "heads_up": "Achtung: Risiken & Fallstricke",
-        "reading": "Empfohlene Lesereihenfolge",
-        "skim": "Überfliegen:",
+        "files_section": "Dateien",
+        "skim": "Überfliegen",
         "test": "Was getestet werden sollte",
         "files": "Dateien",
+        "file_singular": "Datei",
         "check": "Prüfen:",
+        "cross_cutting": "Übergreifend",
     },
     "es": {
         "title_prefix": "Guía de Revisión:",
         "branch": "Rama:",
         "affects": "Afecta:",
         "split": "Sugerencia de División",
-        "gist": "En Resumen",
+        "overview": "Resumen",
         "heads_up": "Puntos Críticos y Riesgos",
-        "reading": "Orden de Lectura Sugerido",
-        "skim": "Vistazo rápido:",
+        "files_section": "Archivos",
+        "skim": "Vistazo rápido",
         "test": "Qué Probar",
         "files": "archivos",
+        "file_singular": "archivo",
         "check": "Verificar:",
+        "cross_cutting": "Aspectos Transversales",
     },
 }
 
@@ -118,10 +126,18 @@ def format_ref_anchor(ref: Dict[str, Any]) -> str:
     return f"([{loc}](#))"
 
 
+def _resolve_heads_up_refs(hu_list: Any, resolve: Any) -> None:
+    for hu in hu_list or []:
+        if isinstance(hu, dict):
+            for ref in hu.get("refs") or []:
+                if isinstance(ref, dict) and isinstance(ref.get("path"), str):
+                    ref["path"] = resolve(ref["path"])
+
+
 def resolve_paths_against_diff(
     data: Dict[str, Any], diff_files: List[str]
 ) -> Dict[str, Any]:
-    """Resolve bare basenames in data to full repo-relative paths found in diff_files."""
+    """Resolve bare basenames in Schema v3 data to full repo-relative paths found in diff_files."""
     if not diff_files:
         return data
 
@@ -138,17 +154,28 @@ def resolve_paths_against_diff(
         matches = by_basename.get(path, [])
         return matches[0] if len(matches) == 1 else path
 
-    # Deep copy or mutate
     data = json.loads(json.dumps(data))
-    for step in data.get("steps", []):
-        for ref in step.get("refs", []):
-            if "path" in ref:
-                ref["path"] = resolve(ref["path"])
-        for item in step.get("items", []):
-            if isinstance(item, dict) and "path" in item:
-                item["path"] = resolve(item["path"])
-        if "skim" in step and isinstance(step["skim"], list):
-            step["skim"] = [resolve(p) for p in step["skim"]]
+
+    overview = data.get("overview")
+    if isinstance(overview, dict) and isinstance(overview.get("skim"), list):
+        overview["skim"] = [
+            resolve(p) if isinstance(p, str) else p for p in overview["skim"]
+        ]
+
+    slices = data.get("slices")
+    if isinstance(slices, list):
+        for sl in slices:
+            if not isinstance(sl, dict):
+                continue
+            for item in sl.get("files") or []:
+                if isinstance(item, dict) and isinstance(item.get("path"), str):
+                    item["path"] = resolve(item["path"])
+            _resolve_heads_up_refs(sl.get("headsUp"), resolve)
+
+    cc = data.get("crossCutting")
+    if isinstance(cc, dict):
+        _resolve_heads_up_refs(cc.get("headsUp"), resolve)
+
     return data
 
 
@@ -162,100 +189,136 @@ def fix_rtl_arrows(text: str, is_rtl: bool) -> str:
     return "".join(parts)
 
 
+def _render_heads_up_items(
+    lines: List[str], heads_up: List[Dict[str, Any]], labels: Dict[str, str], is_rtl: bool
+) -> None:
+    for hu in heads_up:
+        refs = hu.get("refs") or []
+        anchor_part = (
+            " " + " ".join(format_ref_anchor(r) for r in refs) if refs else ""
+        )
+        h_title = fix_rtl_arrows(hu["title"], is_rtl)
+        h_body = fix_rtl_arrows(hu["body"], is_rtl)
+        lines.append(f"- **{h_title}**{anchor_part}: {h_body}")
+        for extra_p in hu.get("extra") or []:
+            lines.append(f"  - {fix_rtl_arrows(extra_p, is_rtl)}")
+        if hu.get("lookFor"):
+            look_for = fix_rtl_arrows(hu["lookFor"], is_rtl)
+            lines.append(f"  - *{labels['check']} {look_for}*")
+
+
+def _render_heads_up_and_qa(
+    lines: List[str], section: Dict[str, Any], labels: Dict[str, str], is_rtl: bool
+) -> None:
+    heads_up = section.get("headsUp") or []
+    if heads_up:
+        lines.append(f"### {labels['heads_up']}")
+        _render_heads_up_items(lines, heads_up, labels, is_rtl)
+        lines.append("")
+
+    qa = section.get("qa") or []
+    if qa:
+        lines.append(f"### {labels['test']}")
+        for t in qa:
+            lines.append(f"- [ ] {fix_rtl_arrows(t, is_rtl)}")
+        lines.append("")
+
+
 def render_markdown(data: Dict[str, Any]) -> str:
-    """Deterministically render a clean, anti-fatigue Markdown review walkthrough."""
+    """Deterministically render a vertical, anti-fatigue Markdown review walkthrough."""
     lang = data.get("lang", "en")
+    is_fa = lang.lower().startswith("fa")
     is_rtl = lang.lower().startswith(("fa", "ar", "he", "ur"))
     labels = get_labels(lang)
     meta = data["meta"]
     stats = meta["stats"]
+    overview = data["overview"]
 
     n_files = stats["files"]
-    if lang.lower().startswith("fa"):
+    if is_fa:
         files_str = f"{to_persian_digits(n_files)} {labels['files']}"
     else:
-        files_str = f"{n_files} {labels['files']}"
-
-    # Find step types
-    steps_by_kind = {}
-    gotchas = []
-    for s in data["steps"]:
-        k = s["kind"]
-        if k == "gotcha":
-            gotchas.append(s)
-        else:
-            steps_by_kind[k] = s
-
-    scope = steps_by_kind.get("scope", {})
-    split = steps_by_kind.get("split")
-    reading = steps_by_kind.get("reading", {})
-    test = steps_by_kind.get("test", {})
+        unit = labels["file_singular"] if n_files == 1 else labels["files"]
+        files_str = f"{n_files} {unit}"
 
     lines: List[str] = []
 
-    # Title & Header
+    # Header
     lines.append(f"# {labels['title_prefix']} {fix_rtl_arrows(meta['title'], is_rtl)}")
     lines.append("")
     lines.append(
         f"**{labels['branch']}** `{meta['branch']}` → `{meta['base']}` • "
         f"**{files_str} (+{stats['added']} / -{stats['removed']})**"
     )
-    lines.append(f"**{labels['affects']}** {fix_rtl_arrows(scope.get('affects', ''), is_rtl)}")
+    lines.append(
+        f"**{labels['affects']}** {fix_rtl_arrows(overview.get('affects', ''), is_rtl)}"
+    )
     lines.append("")
 
-    # Split Recommendation (if any)
+    # Overview optional Split Recommendation
+    split = overview.get("split")
     if split:
         lines.append(f"### {labels['split']}")
         lines.append(fix_rtl_arrows(split.get("recommendation", ""), is_rtl))
-        boundaries = split.get("boundaries")
+        boundaries = split.get("boundaries") or []
         if boundaries:
             lines.append("")
             for b in boundaries:
                 lines.append(f"- {fix_rtl_arrows(b, is_rtl)}")
         lines.append("")
 
-    # The Gist
-    lines.append(f"### {labels['gist']}")
-    for g in scope.get("gist", []):
-        lines.append(fix_rtl_arrows(g, is_rtl))
-    lines.append("")
+    # Overview optional summary
+    ov_summary = overview.get("summary") or []
+    if ov_summary:
+        lines.append(f"### {labels['overview']}")
+        for idx_p, p in enumerate(ov_summary):
+            if idx_p > 0:
+                lines.append("")
+            lines.append(fix_rtl_arrows(p, is_rtl))
+        lines.append("")
 
-    # Heads Up (Gotchas)
-    lines.append(f"### {labels['heads_up']}")
-    for gotcha in gotchas:
-        refs = gotcha.get("refs", [])
-        anchor = format_ref_anchor(refs[0]) if refs else ""
-        anchor_part = f" {anchor}" if anchor else ""
-        g_title = fix_rtl_arrows(gotcha['title'], is_rtl)
-        g_body = fix_rtl_arrows(gotcha['body'], is_rtl)
-        lines.append(f"- **{g_title}**{anchor_part}: {g_body}")
-        if gotcha.get("lookFor"):
-            look_for = fix_rtl_arrows(gotcha['lookFor'], is_rtl)
-            lines.append(f"  - *{labels['check']} {look_for}*")
-    lines.append("")
-
-    # Suggested Reading Order
-    lines.append(f"### {labels['reading']}")
-    for item in reading.get("items", []):
-        anchor = format_ref_anchor(item)
-        role = fix_rtl_arrows(item['role'], is_rtl)
-        summary = fix_rtl_arrows(item['summary'], is_rtl)
-        lines.append(f"- [ ] **{role}** {anchor}: {summary}")
-
-    skim = reading.get("skim", [])
+    # Overview optional collapsed Skim List
+    skim = overview.get("skim") or []
     if skim:
-        skim_str = ", ".join(f"`{s}`" for s in skim)
-        # In Persian markdown, use Persian comma
-        if lang.lower().startswith("fa"):
-            skim_str = "، ".join(f"`{s}`" for s in skim)
-        lines.append(f"*{labels['skim']} {skim_str}*")
-    lines.append("")
+        skim_count = to_persian_digits(len(skim)) if is_fa else str(len(skim))
+        skim_unit = labels["file_singular"] if len(skim) == 1 else labels["files"]
+        lines.append("<details>")
+        lines.append(f"<summary>{labels['skim']} ({skim_count} {skim_unit})</summary>")
+        lines.append("")
+        for s in skim:
+            lines.append(f"- `{s}`")
+        lines.append("")
+        lines.append("</details>")
+        lines.append("")
 
-    # What to Test
-    lines.append(f"### {labels['test']}")
-    for t in test.get("items", []):
-        lines.append(f"- [ ] {fix_rtl_arrows(t, is_rtl)}")
-    lines.append("")
+    # Numbered Vertical Slices
+    for slice_num, sl in enumerate(data["slices"], 1):
+        lines.append(f"## {slice_num}. {fix_rtl_arrows(sl['title'], is_rtl)}")
+        lines.append("")
+        for idx_p, p in enumerate(sl["summary"]):
+            if idx_p > 0:
+                lines.append("")
+            lines.append(fix_rtl_arrows(p, is_rtl))
+        lines.append("")
+
+        # Files checklist
+        lines.append(f"### {labels['files_section']}")
+        for item in sl["files"]:
+            anchor = format_ref_anchor(item)
+            role = fix_rtl_arrows(item["role"], is_rtl)
+            summary = fix_rtl_arrows(item["summary"], is_rtl)
+            lines.append(f"- [ ] **{role}** {anchor}: {summary}")
+        lines.append("")
+
+        _render_heads_up_and_qa(lines, sl, labels, is_rtl)
+
+    # Optional Cross-Cutting section
+    cc = data.get("crossCutting")
+    if cc:
+        cc_title = cc.get("title") or labels["cross_cutting"]
+        lines.append(f"## {fix_rtl_arrows(cc_title, is_rtl)}")
+        lines.append("")
+        _render_heads_up_and_qa(lines, cc, labels, is_rtl)
 
     return "\n".join(lines).strip() + "\n"
 
@@ -283,9 +346,7 @@ def _git(root: str, *args: str) -> str:
         if root:
             cmd.extend(["-C", root])
         cmd.extend(args)
-        out = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=10
-        )
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
         return out.stdout.strip() if out.returncode == 0 else ""
     except Exception:
         return ""
@@ -307,7 +368,7 @@ def compile_walkthrough(
     """Compile a review walkthrough specification into Markdown and HTML deliverables.
 
     Encapsulates input ingestion, Git context enrichment, diff path resolution,
-    Schema v2 validation, Markdown generation, and companion HTML template injection.
+    Schema v3 validation, vertical Markdown generation, and companion HTML template injection.
     """
     start_time = time.perf_counter()
 
@@ -393,7 +454,9 @@ def compile_walkthrough(
             base_dir = Path(out_dir).resolve() if out_dir else Path.cwd()
 
         resolved_md_path = Path(md_path).resolve() if md_path else base_dir / f"{stem}.md"
-        resolved_html_path = Path(html_path).resolve() if html_path else base_dir / f"{stem}.html"
+        resolved_html_path = (
+            Path(html_path).resolve() if html_path else base_dir / f"{stem}.html"
+        )
 
         data["meta"]["markdownPath"] = str(resolved_md_path)
 
@@ -421,13 +484,19 @@ def compile_walkthrough(
 
     elapsed_ms = (time.perf_counter() - start_time) * 1000
 
-    steps = data.get("steps", [])
-    gotchas_count = sum(1 for s in steps if s.get("kind") == "gotcha")
-    reading_count = sum(len(s.get("items", [])) for s in steps if s.get("kind") == "reading")
+    slices = data.get("slices", [])
+    cc = data.get("crossCutting") or {}
+    heads_up_count = sum(len(s.get("headsUp") or []) for s in slices) + len(
+        cc.get("headsUp") or []
+    )
+    files_count = sum(len(s.get("files", [])) for s in slices)
+    qa_count = sum(len(s.get("qa") or []) for s in slices) + len(cc.get("qa") or [])
+
     stats_dict = {
-        "steps": len(steps),
-        "gotchas": gotchas_count,
-        "reading_items": reading_count,
+        "slices": len(slices),
+        "heads_up": heads_up_count,
+        "files": files_count,
+        "qa_items": qa_count,
         "elapsed_ms": elapsed_ms,
     }
 
@@ -440,4 +509,3 @@ def compile_walkthrough(
         html_path=resolved_html_path,
         elapsed_ms=elapsed_ms,
     )
-

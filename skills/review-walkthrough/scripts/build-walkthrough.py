@@ -69,8 +69,8 @@ def main():
 
     stats = res.stats
     print(
-        f"wrote {res.md_path} and {res.html_path}: {stats['steps']} steps "
-        f"({stats['gotchas']} gotchas, {stats['reading_items']} reading items) in {res.elapsed_ms:.1f}ms"
+        f"wrote {res.md_path} and {res.html_path}: {stats['slices']} slices "
+        f"({stats['heads_up']} heads-up, {stats['files']} files, {stats['qa_items']} qa items) in {res.elapsed_ms:.1f}ms"
     )
 
 

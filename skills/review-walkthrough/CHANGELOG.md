@@ -7,6 +7,20 @@ Each release is tagged `review-walkthrough-v<version>` and published on the [Rel
 
 ---
 
+## [4.0.0] - 2026-11-25
+
+### Changed (Breaking)
+- **Schema v3 (`Vertical Slice` Architecture):** Replaced the serial `steps` array (`scope`, `split`, `gotcha`, `reading`, `test`) with three composable sections: `overview`, `slices` (`1..N`), and optional `crossCutting` (`0..1`). Dropped Schema v1 and v2 support cleanly.
+- **Zero Numeric Caps & Removed `category` Badges:** Removed hard item/sentence/character limits (`1..4`, `2..5`, `1..3`, `160`-char titles, phone-viewport card height) and `headsUp` `category` badges from both `walkthrough_schema.py` and the HTML runtime validator `check(d)`.
+- **Scrollable, Zero-Sticky HTML Companion (`walkthrough-template.html`):** Replaced the single-card `Previous / Next` carousel and sticky bottom navigation with a single-column scrollable layout (`max-width: 780px`), consolidating all metadata (branches, diff stats, `headSha`, `.md` filename, IDE switcher, theme toggle) into a non-sticky top `<header>` with no bottom `<footer>`.
+- **Vertical Markdown Rendering (`walkthrough_generator.py`):** Renders `Overview` (with optional `summary`, optional `Split Recommendation`, and collapsed `<details>` `Skim List`), each `Vertical Slice` (`summary`, `Files` checklist, optional `Heads Up`, optional `What to Test`), and optional `Cross-Cutting` closing section.
+- **Unified Conversational Voice & Section 5 Chat Briefing:** Unified Persian prose to natural conversational developer register across JSON, Markdown, and HTML; updated Section 5 Chat Briefing to report deliverable paths, a 1-line recap, optional split advice, and the `Vertical Slice` list with `Heads Up` counts.
+
+### Added
+- **Multi-Slice File Ranges & `Cross-Cutting` Section:** Allowed the same file to appear in multiple `Vertical Slices` with distinct `startLine`–`endLine` ranges, and added an optional `Cross-Cutting` closing section for multi-slice `Heads Up` risks (where `refs` may be empty) and end-to-end `QA Check` scenarios.
+- **Collapsible Slices & Quick-Jump Strip:** All `Vertical Slices` render expanded by default for `Ctrl+F` search with manual collapse toggles persisted in `localStorage["rw-collapsed:<headSha>"]` (never auto-collapsing on checkbox toggle), slice-scoped checkbox keys (`rw-files:<headSha>`, `rw-qa:<headSha>`), a non-sticky quick-jump bar when `slices.length > 2`, and automatic full expansion on print.
+- **Review Concerns `sliceId` Link:** Updated `review-concerns.json` documentation to support optional `sliceId` alongside `headsUpId`.
+
 ## [3.4.1] - 2026-11-04
 
 ### Fixed

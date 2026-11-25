@@ -1,47 +1,48 @@
 # Review Walkthrough Rubric & Reference
 
-Supplementary heuristics for executing the `review-walkthrough` skill: practical sequencing, punchy gotcha formulation, neutral-investigation templates, and content-shaping rules for the HTML companion.
+Supplementary heuristics for executing the `review-walkthrough` skill: vertical slicing heuristics, punchy `Heads Up` formulation, neutral-investigation templates, and qualitative content-shaping rules for Schema v3.
 
 ---
 
-## 1. Suggested Reading Order (Foundation to Leaf)
+## 1. Vertical Slicing Heuristics
 
-Sequence the files by architectural dependency. Leaf nodes (UI components, API routes) cannot be properly evaluated without first understanding the underlying data contracts and domain rules.
+Organize every walkthrough into cohesive **Vertical Slices** — workflow or sub-change units that each tell a complete story — rather than grouping the entire diff into horizontal technical layers.
 
-### Core Order Principle
-1. **Data Models & Types** (`*.types.ts`, schemas, migrations) — Defines data shapes and invariants.
-2. **Core Domain Logic & State** (`services/`, state reducers, business rules) — Algorithms and logic independent of I/O.
-3. **Side Effects & I/O** (`controllers/`, HTTP clients, DB queries, workers) — External integration.
-4. **Presentation & UI** (`components/`, views, styling) — Visual rendering and state binding.
-5. **Tests & Tooling** (`*.test.ts`, configs, scripts) — Verification of the layers above.
+### How to Slice a Diff
+1. **Slice by Workflow or Sub-Change:** Group changes that serve the same user flow, feature behavior, or refactor goal into one `Vertical Slice` (e.g., `auth-token-refresh`, `checkout-validation`, `settings-modal`).
+2. **Sequence Files Within Each Slice:** Inside a slice's `files` array, order files logically from contract/data to behavior to caller/UI to tests so the reviewer builds context as they read.
+3. **Allow a File in Multiple Slices with Distinct Ranges:** When one file serves two unrelated workflows, include it in both corresponding slices with its distinct `startLine`–`endLine` range in each. Within a single slice, consolidate scattered edits in the same file into one entry rather than fragmenting it into multiple bullets.
+4. **Reserve `Cross-Cutting` for Multi-Slice Concerns:** Put `Heads Up` notes or end-to-end `QA Check` scenarios in `crossCutting` only when they genuinely span multiple slices (such as shared migrations, global state interactions, or end-to-end flows). Never force a slice-specific risk into `Cross-Cutting` or a cross-slice risk into an arbitrary slice.
+5. **Tuck Boilerplate into `Skim List`:** Put lockfiles, generated artifacts, pure documentation, and mechanical renames in `overview.skim` as bare repo-relative paths. They render collapsed by default inside `Overview`.
 
-### Anti-Fatigue Rules for the Reading Order:
-- **Role-First Format:** Begin each checklist item with a concise bold role or component name in the conversation language, followed by the file link and summary: `- [ ] **<Role>** ([file.ext:line](#)): <Summary>`. In RTL languages, this ensures the line starts with native text so the list item renders right-to-left.
-- **Group by File:** Consolidate multiple changes in the same file into a single checklist entry with a range (e.g., `VSlider.tsx:49-180`). Never fragment one file into 4 separate bullets for scattered lines.
-- **Omit ASCII Diagrams:** Do not include ASCII tree diagrams unless the diff is massive (>20 files) and has complex branching. For typical diffs, a simple numbered list is faster to parse and saves vertical space.
-- **Merge Skimmables:** List boilerplate, documentation, lockfiles, and generated files as a single footer note (`*Skim: ...*` or its localized equivalent like `*بررسی گذرا: ...*`) rather than wasting vertical space on a separate table.
+### Anti-Fatigue Rules for Slices & Files
+- **Role-First Format:** Begin each file item's `role` with a concise noun phrase in the conversation language (which renders as `- [ ] **<Role>** ([file.ext:line](#)): <Summary>` in Markdown). In RTL languages, starting with native text ensures the list item renders right-to-left.
+- **Omit ASCII Diagrams:** Do not include ASCII tree diagrams unless the diff is massive (>20 files) and has complex branching. Vertical slices with ordered file lists are faster to parse and avoid visual clutter.
+- **Omit Duplicate `Overview` Prose on Single-Slice Trivial Diffs:** When a diff has only one simple slice, omit `overview.summary` so the `Overview` only shows title, metadata, `affects`, and optional `Skim List` without repeating the slice summary back-to-back.
+- **Qualitative Anti-Fatigue Scaling:** Match depth to the actual diff. Small, clean refactors can have 1 slice, 0 `Heads Up`, and 0 `QA Check` items. Complex diffs can include as many slices, paragraphs, `Heads Up` notes, and `QA Check` items as the code genuinely warrants — never pad with filler or squeeze real risks to hit a numeric quota.
 
 ---
 
-## 2. Heads Up (Gotchas & Risks) Formulation
+## 2. Heads Up (Risks & Edge Cases) Formulation
 
-Gotchas must be line-anchored, practical, and written in direct spoken developer language matching the user's conversational language. They highlight potential traps, regressions, or subtle edge cases before the reviewer begins reading the diff.
+`Heads Up` items must be line-anchored (inside a `Vertical Slice`), practical, and written in direct spoken developer language matching the user's conversational language. They sit directly below the slice's `Files` list so the reviewer sees warnings right after reading the code they apply to.
 
 ### Localization & RTL Guidelines
-- **Pure Localization:** Translate the section header (`### Heads Up` → `### نکات حساس و ریسک‌ها`, `### Achtung: Risiken`, etc.) and gotcha titles without bilingual English tagging (avoid `### Heads Up (نکات...)` or `(Suggested Reading Order)`).
-- **RTL Integrity:** In RTL languages (Persian, Arabic, Hebrew), ensure titles, bullets, and checklist items start with native text rather than English prefixes, allowing the markdown renderer to set right-to-left block direction naturally.
+- **Pure Localization:** Translate section headers (`### Heads Up` → `### نکات حساس و ریسک‌ها`, `### Achtung: Risiken`, etc.) and titles without bilingual English tagging (avoid `### Heads Up (نکات...)`).
+- **RTL Integrity:** In RTL languages (Persian, Arabic, Hebrew), ensure titles, bullets, and checklist items start with native text rather than English prefixes, allowing renderers to set right-to-left block direction naturally.
 - **Technical Terms & Acronyms in Latin Script:** Code symbols, identifiers, file paths, protocols, and technical acronyms (e.g., WebRTC, ICE, `mutex.Lock()`, `flexDirection`) remain in Latin script (backticks for code/identifiers/paths; optional for general acronyms in prose). Never phonetically transliterate them into native script (e.g., do NOT write وب‌آرتی‌سی for WebRTC, or استیل for stale). For terms without a natural localized form in developer speech, use the standard term (e.g., برنچ rather than an unfamiliar translation like شاخه).
 
 ### Tone & Style: Direct vs. Academic
 
 | Style | Don't Do This (Academic & Stiff) | Do This (Conversational & Punchy) |
 | :--- | :--- | :--- |
-| **Header** | `### 1. Concurrency Invariant & Race Window In Worker` | `- **Potential race condition** ([worker.ts:130](#)):` |
+| **Title** | `Concurrency Invariant & Race Window In Worker` | `پنجرهٔ رقابت در چک اولیهٔ فعال‌بودن` / `Potential race condition in worker activation` |
 | **Body** | `Question: Is mutex.Lock() acquired before checking is_active (worker.ts:130), or does a race window exist where two concurrent routines evaluate the predicate simultaneously?` | `Lock is checked after \`is_active\`. If two jobs arrive at once, both might pass before either locks.` |
 | **Layout Flip** | `Question: Within an LTR-directed container, will Yoga layout the video control bar in reverse order when isRTL() evaluates to false?` | `The container forces \`ltr\`, but line 85 still flips \`flexDirection\`. In LTR mode, this might reverse the buttons (fullscreen on left, play on right).` |
 
-### Key Gotcha Categories
-- **Edge cases & boundary traps:** Zero values, empty slices, null handling, division by zero.
+### Common Risk Patterns to Watch For
+Schema v3 does not use `category` badges; use these patterns purely as review prompts when scanning a slice:
+- **Edge cases & boundary traps:** Zero values, empty lists, null handling, division by zero.
 - **State & re-render fan-out:** Broad reactive state selectors that trigger unnecessary renders on idle components.
 - **Layout & styling collisions:** Competing CSS/flex properties (e.g., forced LTR container with inline RTL direction flip).
 - **Concurrency & ordering:** Missing mutexes, non-atomic multi-step operations, lifecycle race conditions.
@@ -81,7 +82,7 @@ When subagents are unavailable (Tier C), the primary agent runs the identical in
 ### 3c. The Discretion Filter
 
 Do not spawn subagents indiscriminately for every interaction:
-- **Answer directly (in-context):** Simple syntax or code questions where the answer is visible in the diff, clarifications of the walkthrough cards or chat briefing, or quick single-file checks.
+- **Answer directly (in-context):** Simple syntax or code questions where the answer is visible in the diff, clarifications of the walkthrough slices or chat briefing, or quick single-file checks.
 - **Dispatch Investigator Subagent:** Multi-file execution paths, concurrency/race-condition invariants, caller blast-radius inquiries across the repository, or git-history archaeology to determine why a pattern was established.
 
 ### 3d. Persistent Review Concerns Store (`review-concerns.json`)
@@ -99,8 +100,10 @@ To prevent loss of review findings during long conversations or session compacti
   "concerns": [
     {
       "id": "c1",
-      "source": "gotcha | qa | reviewer",
-      "gotchaId": "optional-link-to-walkthrough-gotcha-id",
+      "source": "headsUp | qa | reviewer",
+      "sliceId": "optional-link-to-walkthrough-slice-id",
+      "headsUpId": "optional-link-to-heads-up-item",
+      "gotchaId": "optional-legacy-alias-for-headsUpId",
       "ref": {
         "path": "src/services/worker.ts",
         "startLine": 130,
@@ -117,7 +120,7 @@ To prevent loss of review findings during long conversations or session compacti
 ```
 
 #### Status Lifecycle
-- **`open`**: Initial state for walkthrough gotchas or newly raised reviewer questions awaiting investigation.
+- **`open`**: Initial state for walkthrough `Heads Up` items or newly raised reviewer questions awaiting investigation.
 - **`action-needed`**: Confirmed defect, subtle bug, or agreed code change that should be addressed before merging.
 - **`resolved`**: Investigated and verified safe (false alarm dismissed with concrete code evidence).
 - **`accepted-risk`**: Genuine trade-off or technical debt explicitly acknowledged by the reviewer as acceptable for this PR.
@@ -129,39 +132,25 @@ When the user explicitly asks to format PR comments, read `review-concerns.json`
 
 ## 4. Structured Walkthrough: Content-Shaping Rules
 
-The walkthrough is authored JSON-first (`review-walkthrough.json`), from which both the Markdown walkthrough and the card-based HTML companion are deterministically compiled by `scripts/build-walkthrough.py`. The structured JSON is the single source of truth. These rules keep the contents inside the anti-fatigue budget. The full technical spec lives in [`html-walkthrough.md`](html-walkthrough.md).
+The walkthrough is authored JSON-first (`review-walkthrough.json`, Schema v3), from which both the Markdown walkthrough and the scrollable HTML companion are deterministically compiled by `scripts/build-walkthrough.py`. The structured JSON is the single source of truth. The full technical spec lives in [`html-walkthrough.md`](html-walkthrough.md).
 
 ### 4a. Pure Prose Bodies & Structured Anchors
-- **Pure Conversational Prose:** Body text in gotchas and summaries in reading items must be 100% natural conversational prose. **Never prepend parenthesized path mentions** (e.g., do NOT write `(Bar.tsx:35): ...` or `([Bar.tsx:35](#)): ...`).
-- **Structured References:** File references live strictly inside structured `refs` arrays (or `items` for reading order) with `path`, `startLine`, and optional `endLine`.
-- The generator/renderer automatically constructs file links and 1-click Copy Path pills (`.ref-pill`) in HTML, and clean links alongside bold roles in Markdown.
+- **Pure Conversational Prose:** `headsUp[*].body` and `files[*].summary` must be 100% natural conversational prose. **Never prepend parenthesized path mentions** (e.g., do NOT write `(Bar.tsx:35): ...` or `([Bar.tsx:35](#)): ...`).
+- **Structured References:** File references live strictly inside structured `refs` arrays (or `files` entries in each slice) with `path`, `startLine`, and optional `endLine`.
+- The compiler/renderer automatically constructs file links and 1-click Copy Path pills (`.ref-pill`) in HTML, and clean links alongside bold roles in Markdown.
 
-### 4b. Card Budget (Anti-Fatigue)
-- Every card must read without scrolling on a phone-sized viewport (about 375×667) at normal text size.
-- Step title: one sentence, at most 160 characters (scope = diff shape, reading = `Read in order: role1 → role2 …` or in RTL `ترتیب بررسی: نقش ۱ ← نقش ۲ …`, test = generic count-based line). Never copy item text into a title.
-- Gotcha body: 1 to 2 sentences, full text, never truncated. `lookFor`: at most 1 sentence. `extra`: at most 1 short paragraph, only for a real edge case.
-- Gotchas: 1–4 (rule of thumb: 2–4).
-- Test items: 2–3, each one line, full text.
+### 4b. Qualitative Anti-Fatigue Shaping
+- **No Rigid Numeric Caps:** Schema v3 imposes no hard limits on item counts, summary paragraph counts, or title character lengths. Use judgment based on the diff's actual complexity.
+- **Synthesize Titles Cleanly:** `overview.title` frames the overall change; each `slice.title` names the workflow or sub-change cleanly (never copy the first file's summary verbatim).
+- **Tight, Un-truncated Prose:** Keep `headsUp[*].body` and `lookFor` direct and scannable without truncating real context. Use `extra` only for a genuine secondary edge case.
+- **Omit Empty Sections:** If a slice has no `Heads Up` risks or no manual `QA Check` steps, omit `headsUp` / `qa` (or leave empty) rather than inventing filler. On a single-slice trivial diff, omit `overview.summary`.
 
 ### 4c. Do Not Invent Structure the Walkthrough Doesn't Have
-- No severity levels, no "must fix / should fix" labels, no ready-made fixes, no pass/fail verdicts. The walkthrough orients the reviewer; it does not judge.
+- No severity levels, no `category` badges, no "must fix / should fix" labels, no ready-made fixes, no pass/fail verdicts. The walkthrough orients the reviewer; it does not judge.
 - No code snippets or diff hunks in the HTML. The reviewer reads real, untrimmed code in the IDE, and the editor links / copy buttons are the bridge to it.
-- No `evidence` or "why it matters" blocks unless the review findings specifically call for that explanation.
-- A gotcha without at least one verifiable `file:line` ref is invalid (anchoring rule). Ensure every gotcha anchors to actual changed code.
+- **Anchoring Rule:** Every `Heads Up` inside a `Vertical Slice` must carry at least one verifiable `file:line` ref (`refs.length >= 1`). Only `Cross-Cutting` `Heads Up` items may have an empty `refs` array when the risk spans multiple slices without a single anchor.
 
-### 4d. Gotcha Category Mapping
-Pick exactly one `category` per gotcha, from the Key Gotcha Categories in Section 2:
-
-| Key Gotcha Category | `category` value |
-| :--- | :--- |
-| Edge cases & boundary traps | `edge-case` |
-| State & re-render fan-out | `state` |
-| Layout & styling collisions | `layout` |
-| Concurrency & ordering | `concurrency` |
-| Persistence & reset surprises | `persistence` |
-| Anything else | `other` |
-
-### 4e. Reading-Order Items
-- One item per file, with the consolidated range, exactly as in the markdown. `role` is a short noun phrase, not a sentence.
-- Keep the foundation-to-leaf order from Section 1.
-- The skimmable files go in `skim` as bare paths, never as separate items.
+### 4d. Reading Files & Skim List
+- Within a single slice, use one `files` entry per file with its consolidated `startLine`–`endLine` range; `role` is a short noun phrase, not a sentence.
+- When a file serves multiple unrelated workflows, it may appear in multiple slices with its distinct `startLine`–`endLine` range in each.
+- Keep `overview.skim` for bare repo-relative paths of boilerplate, lockfiles, docs, and generated files.

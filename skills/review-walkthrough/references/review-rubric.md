@@ -56,36 +56,11 @@ When the reviewer asks an ad-hoc question during standby, investigate without a 
 
 ### 3a. Investigation Checklist
 1. Restate the question as two competing hypotheses (e.g., "protected against duplicates" vs. "a duplicate path exists").
-2. Read the target code and its real callers — prefer graph tools (`trace_path`, `search_graph`) when available, grep otherwise.
+2. Read the target code and its real callers using targeted line reads (`view_file` with `StartLine`/`EndLine` rather than reading whole files) to protect context headroom — prefer graph tools (`trace_path`, `search_graph`) when available, grep otherwise.
 3. Collect concrete evidence for **both** sides: `file:line` references and actual execution paths.
 4. Report which way the evidence points, with the evidence. Keep the explanation direct and conversational. If unresolved, say so and name what would resolve it.
 
-### 3b. Investigator Subagent Dispatch (Tier S Harnesses)
-
-When running in a multi-agent harness, dispatch an isolated investigator subagent for questions that warrant real investigation. Subagents communicate naturally and thoroughly with the primary agent without artificial line caps:
-
-> **Role:** `Code Review Investigator`
-> **Prompt Template:**
-> Investigate a code-review question in `<repo>`. Context: branch `<branch>` (HEAD: `<headSha>`, base: `<base>`); inspect the diff with `git diff <base>...HEAD`.
-> Target symbols/lines: `<symbols, file:line ranges>`.
->
-> Question under review: `<user's question>`.
->
-> Evaluate BOTH hypotheses neutrally:
-> 1. The code handles this correctly: identify the protections that exist, contracts enforced, and where they live. Cite exact `file:line` locations.
-> 2. The code can fail here: identify concrete edge cases, callers, or execution paths that defeat those protections. Cite exact `file:line` locations.
->
-> Do not try to confirm a predetermined answer. Trace real callers and execution flow using graph or grep tools. Communicate your full findings, evidence, and code context freely and thoroughly, concluding with a clear statement on where the evidence points.
-
-When subagents are unavailable (Tier C), the primary agent runs the identical investigation itself under the same both-hypotheses mandate, using targeted line reads (`view_file` with `StartLine`/`EndLine`) to protect context headroom.
-
-### 3c. The Discretion Filter
-
-Do not spawn subagents indiscriminately for every interaction:
-- **Answer directly (in-context):** Simple syntax or code questions where the answer is visible in the diff, clarifications of the walkthrough slices or chat briefing, or quick single-file checks.
-- **Dispatch Investigator Subagent:** Multi-file execution paths, concurrency/race-condition invariants, caller blast-radius inquiries across the repository, or git-history archaeology to determine why a pattern was established.
-
-### 3d. Persistent Review Concerns Store (`review-concerns.json`)
+### 3b. Persistent Review Concerns Store (`review-concerns.json`)
 
 To prevent loss of review findings during long conversations or session compactions, the agent maintains `<storage-dir>/review-concerns.json` as a structured single source of truth.
 

@@ -33,10 +33,9 @@ Interactive chat walkthroughs introduce problems of their own: turn-by-turn gati
 - **Collapsed `Skim List` & `Cross-Cutting` Section**: Lockfiles, docs, and generated artifacts tuck into a collapsed `<details>` `Skim List` inside `Overview`. Multi-slice `Heads Up` risks and end-to-end `QA Check` flows live cleanly in an optional `Cross-Cutting` closing section.
 - **Split Recommendation**: For oversized diffs, suggests splitting the PR inside `Overview` before generating the full walkthrough.
 - **Base Ref Pinning & Staleness Detection**: Pins `HEAD` at walkthrough generation time and re-checks it during review, offering to regenerate both files after a rebase or amend.
-- **Subagent Context Preservation**: In multi-agent harnesses (Tier S), offloads heavy diff inspection, JSON authoring, and compiler execution to an isolated Author Subagent, preserving >95% of context headroom for standby Q&A. Emergent deep questions dispatch discretionary Investigator Subagents.
 - **Persistent Review Concerns**: Tracks review findings, open questions, and agreed resolutions in `<storage-dir>/review-concerns.json`, providing a deterministic single source of truth across long sessions and compactions.
 - **Progressive Tooling**: Uses graph/structural MCP tools when available; degrades gracefully to git and grep when not.
-- **Anti-Bias Q&A**: Emergent questions are investigated under a both-hypotheses mandate (via a neutral investigator subagent where supported), never by confirming a predetermined answer.
+- **Anti-Bias Q&A**: Emergent questions are investigated directly in-context under a both-hypotheses mandate, never by confirming a predetermined answer.
 - **Zero Unsolicited Output**: No automatic sign-off recaps or PR comments — logged findings in `review-concerns.json` are compiled into a ready-to-post markdown block only on explicit request.
 
 ---
@@ -76,7 +75,7 @@ How it works:
 
 ```mermaid
 flowchart TD
-    A[Inspect Git Diff & Pin HEAD] -->|Tier S: Spawns Author Subagent| B[Diff & Vertical Slice Analysis]
+    A[Inspect Git Diff & Pin HEAD] --> B[Diff & Vertical Slice Analysis]
     B --> C[Author review-walkthrough.json & review-concerns.json]
     C --> C2[Execute build-walkthrough.py: Render MD & HTML]
     C2 --> D[Chat Briefing: Deliverable Paths + Vertical Slices]
@@ -84,7 +83,7 @@ flowchart TD
     E --> F{Reviewer Input}
     F -- "simple clarification" --> G1[Direct Answer in Context]
     G1 --> E
-    F -- "deep code question" --> G2[Dispatch Investigator Subagent]
+    F -- "deep code question" --> G2[Direct Both-Hypotheses Investigation]
     G2 --> G3[Update review-concerns.json]
     G3 --> E
     F -- "push / amend / rebase" --> H[Staleness Check: Regenerate Walkthrough + HTML]

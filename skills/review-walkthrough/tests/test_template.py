@@ -143,9 +143,12 @@ class TestWalkthroughTemplate(unittest.TestCase):
         self.assertIn("shaHint", self.content)
         self.assertIn(".sl-body[hidden]{display:block!important}", css)
         self.assertIn(".sl-tog svg{display:none!important}", css)
+        self.assertRegex(css, r"\.icon-btn\{")
         print_blocks = re.findall(r"@media print\{(.*)\}", css)
         self.assertTrue(print_blocks, "Expected @media print blocks")
-        self.assertRegex("\n".join(print_blocks), r"\.sl-h\{[^}]*position\s*:\s*static")
+        pb = "\n".join(print_blocks)
+        self.assertRegex(pb, r"\.sl-h\{[^}]*position\s*:\s*static")
+        self.assertIn(".icon-btn", pb)
 
     def test_print_rules_allow_card_flow_and_keep_atomic_items(self):
         css = re.search(r"<style>(.*?)</style>", self.content, re.DOTALL).group(1)
@@ -703,6 +706,10 @@ const faEdSel = appEl.querySelector('.ed-sel');
 if (faEdSel.getAttribute('aria-label') !== 'ویرایشگر') {{
   throw new Error('Expected Persian aria-label ویرایشگر on .ed-sel, got ' + faEdSel.getAttribute('aria-label'));
 }}
+const faBrowserBtn = appEl.querySelector('.hdr').querySelector('a.icon-btn');
+if (!faBrowserBtn || faBrowserBtn.getAttribute('aria-label') !== 'باز کردن در مرورگر' || faBrowserBtn.getAttribute('title') !== 'باز کردن در مرورگر') {{
+  throw new Error('Expected Persian open-in-browser label on .hdr a.icon-btn, got ' + (faBrowserBtn && faBrowserBtn.getAttribute('aria-label')));
+}}
 const faAddDot = appEl.querySelector('.std.add');
 const faDelDot = appEl.querySelector('.std.del');
 if (!faAddDot || faAddDot.getAttribute('title') !== 'اضافه‌شده') {{
@@ -736,6 +743,45 @@ if (!edSel) throw new Error('Expected .ed-sel');
 if (edSel.getAttribute('aria-label') !== 'Editor') {{
   throw new Error('Expected English aria-label Editor on .ed-sel, got ' + edSel.getAttribute('aria-label'));
 }}
+const enBrowserBtn = appEl.querySelector('.hdr').querySelector('a.icon-btn');
+if (!enBrowserBtn || enBrowserBtn.getAttribute('aria-label') !== 'Open in browser' || enBrowserBtn.getAttribute('title') !== 'Open in browser') {{
+  throw new Error('Expected English open-in-browser label on .hdr a.icon-btn');
+}}
+if (enBrowserBtn.getAttribute('target') !== '_blank' || !String(enBrowserBtn.getAttribute('rel') || '').includes('noopener')) {{
+  throw new Error('Expected target=_blank and rel=noopener on .hdr a.icon-btn');
+}}
+if (enBrowserBtn.getAttribute('href') !== 'file:///tmp/walkthrough.html') {{
+  throw new Error('Expected file:// fallback href from markdownPath, got ' + enBrowserBtn.getAttribute('href'));
+}}
+let openedArgs = null;
+const browserSandbox = Object.assign({{}}, sandbox, {{
+  location: {{ hash: '', href: 'https://review.local/walkthrough.html' }},
+  window: {{ scrollTo() {{}}, open(...args) {{ openedArgs = args; return {{}}; }} }},
+}});
+dataEl.textContent = JSON.stringify(valid);
+appEl.children = [];
+vm.runInNewContext(patched, browserSandbox);
+const liveBtn = appEl.querySelector('.hdr').querySelector('a.icon-btn');
+if (!liveBtn || liveBtn.getAttribute('href') !== 'https://review.local/walkthrough.html') {{
+  throw new Error('Expected current location.href on .hdr a.icon-btn, got ' + (liveBtn && liveBtn.getAttribute('href')));
+}}
+liveBtn.onclick({{ preventDefault() {{}} }});
+if (!openedArgs || openedArgs[0] !== 'https://review.local/walkthrough.html' || openedArgs[1] !== '_blank' || !String(openedArgs[2] || '').includes('noopener')) {{
+  throw new Error('Expected window.open with _blank and noopener, got ' + JSON.stringify(openedArgs));
+}}
+const fallbackSandbox = Object.assign({{}}, sandbox, {{
+  location: {{ hash: '', href: 'https://review.local/walkthrough.html' }},
+  window: {{ scrollTo() {{}}, open() {{ return null; }} }},
+}});
+appEl.children = [];
+vm.runInNewContext(patched, fallbackSandbox);
+appEl.querySelector('.hdr').querySelector('a.icon-btn').onclick({{ preventDefault() {{}} }});
+if (fallbackSandbox.location.href !== 'googlechrome://review.local/walkthrough.html') {{
+  throw new Error('Expected Chrome fallback URL when window.open returns null, got ' + fallbackSandbox.location.href);
+}}
+dataEl.textContent = JSON.stringify(delPayload);
+appEl.children = [];
+vm.runInNewContext(patched, sandbox);
 const enAddDot = appEl.querySelector('.std.add');
 const enDelDot = appEl.querySelector('.std.del');
 if (!enAddDot || enAddDot.getAttribute('title') !== 'Added') {{

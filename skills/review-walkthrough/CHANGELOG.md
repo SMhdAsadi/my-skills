@@ -7,6 +7,14 @@ Each release is tagged `review-walkthrough-v<version>` and published on the [Rel
 
 ---
 
+## [4.2.0] - 2026-11-26
+
+### Added
+- **Open-in-Browser Header Button (`walkthrough-template.html`):** Added an accessible `.icon-btn` link in the top `<header class="hdr">` `.actions` bar (cohesive with the editor selector and theme toggle) that opens the walkthrough HTML in the user's default browser (`target="_blank"` with `rel="noopener noreferrer"`, using `location.href` or a `file://` fallback derived from `meta.markdownPath`, plus a `googlechrome:` fallback for `http:`/`https:` if `window.open` cannot open the target), localized in English (`Open in browser`) and Persian (`باز کردن در مرورگر`), and hidden in `@media print`.
+
+### Changed
+- **Direct Main-Agent Execution (No Subagents):** Removed all subagent delegation (`Tier S` / `Tier C` split, Author Subagent, Investigator Subagent, and Discretion Filter) from `SKILL.md`, `references/review-rubric.md`, and `README.md`. Diff inspection, vertical slice authoring, walkthrough compilation, and emergent Q&A investigation now run directly in the main agent using targeted line reads and progressive graph/grep tooling while preserving the neutral both-hypotheses investigation checklist.
+
 ## [4.1.0] - 2026-11-25
 
 ### Changed

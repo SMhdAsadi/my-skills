@@ -46,6 +46,8 @@ code{font:.9em var(--mono);background:var(--code-bg);padding:.1em .35em;border-r
 .seg button{font:600 13px var(--font);background:none;border:0;color:var(--text-muted);padding:4px 8px;cursor:pointer;display:inline-flex;align-items:center}
 .seg button[aria-pressed=true]{background:var(--code-bg);color:var(--text)}
 .ed-sel{font:13px var(--font);background:var(--code-bg);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:4px 8px;cursor:pointer}
+.icon-btn{display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:6px;padding:5px 8px;background:var(--code-bg);color:var(--text-muted);text-decoration:none;cursor:pointer;line-height:1}
+.icon-btn:hover{color:var(--text)}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:0;min-width:0;margin-bottom:20px;overflow-x:clip}
 .sec-blk{border-top:1px solid var(--border);margin-top:18px;padding-top:16px}
 .co{border-inline-start:3px solid var(--text-muted);padding-inline-start:12px;margin-block:14px}
@@ -93,7 +95,7 @@ html[dir=rtl] .sl-tog[aria-expanded=false] svg{transform:rotate(90deg)}
 .sl-body{padding:18px 24px 24px}
 .sl-body[hidden]{display:none}
 svg{flex:none}
-@media print{.seg,.ed-sel,.cp-btn,.sl-tog svg{display:none!important}.sl-h{position:static;border-radius:7px 7px 0 0;border-bottom:1px solid var(--border)}.sl-body[hidden]{display:block!important}.card{margin-bottom:16px}.hu-item,.co,ul.chk li{break-inside:avoid}h1,h2,h3,h4,.sl-h{break-after:avoid}}
+@media print{.seg,.ed-sel,.icon-btn,.cp-btn,.sl-tog svg{display:none!important}.sl-h{position:static;border-radius:7px 7px 0 0;border-bottom:1px solid var(--border)}.sl-body[hidden]{display:block!important}.card{margin-bottom:16px}.hu-item,.co,ul.chk li{break-inside:avoid}h1,h2,h3,h4,.sl-h{break-after:avoid}}
 </style>
 </head>
 <body>
@@ -106,8 +108,8 @@ const EDITORS=['vscode','cursor','windsurf','zed','android-studio','goland','ide
 const VALID_ED=['vscode','vscode-insiders','cursor','windsurf','vscodium','zed','idea','goland','android-studio','studio','webstorm','pycharm','copy'];
 const ED_LABELS={vscode:'VS Code','vscode-insiders':'VS Code Insiders',cursor:'Cursor',windsurf:'Windsurf',vscodium:'VSCodium',zed:'Zed','android-studio':'Android Studio',goland:'GoLand',webstorm:'WebStorm',pycharm:'PyCharm',idea:'JetBrains',copy:'Copy Only'};
 const I={
-en:{branch:'Branch',split:'Split recommendation',overview:'Overview',affects:'Affects',headsUp:'Heads up',check:'Check',filesSec:'Files',skim:'Skim',test:'What to test',crossCutting:'Cross-cutting',theme:'Theme',sys:'System',light:'Light',dark:'Dark',editor:'Editor',open:'Open in editor',copy:'Copy path',copied:'Copied!',added:'Added',deleted:'Deleted',invalid:'Invalid walkthrough data',files:'files',file:'file',shaHint:'Pinned commit SHA — if HEAD moved, line numbers may be stale'},
-fa:{branch:'برنچ',split:'پیشنهاد تفکیک برنچ',overview:'خلاصه تغییرات',affects:'بخش‌های تحت‌تأثیر',headsUp:'نکات حساس و ریسک‌ها',check:'بررسی کنید',filesSec:'فایل‌ها',skim:'بررسی گذرا',test:'مواردی که باید تست شوند',crossCutting:'نکات مشترک بین بخش‌ها',theme:'پوسته',sys:'خودکار',light:'روشن',dark:'تیره',editor:'ویرایشگر',open:'باز کردن در ویرایشگر',copy:'کپی مسیر',copied:'کپی شد!',added:'اضافه‌شده',deleted:'حذف‌شده',invalid:'داده‌های راهنما نامعتبر است',files:'فایل',file:'فایل',shaHint:'شناسهٔ کامیت پین‌شده — اگر HEAD جلو رفته باشد، شماره خط‌ها ممکن است قدیمی باشند'}
+en:{branch:'Branch',split:'Split recommendation',overview:'Overview',affects:'Affects',headsUp:'Heads up',check:'Check',filesSec:'Files',skim:'Skim',test:'What to test',crossCutting:'Cross-cutting',theme:'Theme',sys:'System',light:'Light',dark:'Dark',editor:'Editor',browser:'Open in browser',open:'Open in editor',copy:'Copy path',copied:'Copied!',added:'Added',deleted:'Deleted',invalid:'Invalid walkthrough data',files:'files',file:'file',shaHint:'Pinned commit SHA — if HEAD moved, line numbers may be stale'},
+fa:{branch:'برنچ',split:'پیشنهاد تفکیک برنچ',overview:'خلاصه تغییرات',affects:'بخش‌های تحت‌تأثیر',headsUp:'نکات حساس و ریسک‌ها',check:'بررسی کنید',filesSec:'فایل‌ها',skim:'بررسی گذرا',test:'مواردی که باید تست شوند',crossCutting:'نکات مشترک بین بخش‌ها',theme:'پوسته',sys:'خودکار',light:'روشن',dark:'تیره',editor:'ویرایشگر',browser:'باز کردن در مرورگر',open:'باز کردن در ویرایشگر',copy:'کپی مسیر',copied:'کپی شد!',added:'اضافه‌شده',deleted:'حذف‌شده',invalid:'داده‌های راهنما نامعتبر است',files:'فایل',file:'فایل',shaHint:'شناسهٔ کامیت پین‌شده — اگر HEAD جلو رفته باشد، شماره خط‌ها ممکن است قدیمی باشند'}
 };
 
 const P={open:'M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5',sys:'M4 5h16v10H4zM9 19h6M12 15v4',sun:'M12 12m-4 0a4 4 0 1 0 8 0a4 4 0 1 0-8 0M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4',moon:'M20 13A8 8 0 0 1 11 4a8 8 0 1 0 9 9z',copy:'M8 4v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2h-8a2 2 0 0 0-2 2zM4 8H2v12a2 2 0 0 0 2 2h12v-2H4V8z',chev:'M6 9l6 6 6-6'};
@@ -192,6 +194,8 @@ function themeCtl(){let cur=null;try{cur=localStorage.getItem('rw-theme')}catch(
  const g=h('div',{class:'seg',role:'group','aria-label':S.theme});
  [['system',S.sys,'sys'],['light',S.light,'sun'],['dark',S.dark,'moon']].forEach(([v,l,ic])=>{const on=v==='system'?cur!=='light'&&cur!=='dark':cur===v,b=h('button',{type:'button','aria-pressed':String(on),'aria-label':l,title:l},icon(ic));b.onclick=()=>{try{v==='system'?localStorage.removeItem('rw-theme'):localStorage.setItem('rw-theme',v)}catch(e){}v==='system'?delete root.dataset.theme:root.dataset.theme=v;g.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)))};g.append(b)});return g}
 function editorCtl(){const s=h('select',{class:'ed-sel','aria-label':S.editor}),opts=EDITORS.includes(curEd)?EDITORS:[curEd,...EDITORS];opts.forEach(e=>{const o=h('option',{value:e,text:ED_LABELS[e]||e});if(e===curEd)o.selected=true;s.append(o)});s.value=curEd;s.onchange=()=>{curEd=s.value;try{localStorage.setItem('rw-editor',curEd)}catch(e){}updLinks()};return s}
+function browserUrl(){const u=typeof location==='object'&&location.href||'';if(/^(https?|file):/i.test(u))return u;const mp=D&&D.meta&&D.meta.markdownPath;if(mp){const p=String(mp).replace(/\\/g,'/').replace(/\.md$/i,'.html');return'file://'+(p.startsWith('/')?'':'/')+p}return u||'#'}
+function browserCtl(){const u=browserUrl();return h('a',{class:'icon-btn',href:u,target:'_blank',rel:'noopener noreferrer',title:S.browser,'aria-label':S.browser,onclick:e=>{if(typeof window.open==='function'){e.preventDefault();let w=null;try{w=window.open(u,'_blank','noopener,noreferrer')}catch(_){}if(!w&&/^https?:/i.test(u))location.href=u.replace(/^https?:/i,'googlechrome:')}}},icon('open'))}
 
 function updLinks(){
  document.querySelectorAll('.ref-pill').forEach(p=>{
@@ -211,7 +215,7 @@ function build(){
  CB={};uniq.forEach(p=>{const b=p.split('/').pop();CB[b]=(CB[b]||0)+1});
  const normEd=e=>e==='studio'?'android-studio':e;let sEd=null;try{sEd=localStorage.getItem('rw-editor')}catch(e){}const dEd=D.repo&&(D.repo.defaultEditor||D.repo.editor),pick=[sEd,dEd].map(normEd).find(e=>e&&VALID_ED.includes(e));if(pick)curEd=pick;
  const mdB=String(m.markdownPath||'').split('/').pop(),u=L.toLowerCase().startsWith('fa')?S.files:(m.stats.files===1?S.file:S.files);
- const top=h('header',{class:'hdr'},h('div',{class:'row'},h('h1',null,rich(m.title)),h('div',{class:'actions'},editorCtl(),themeCtl())),h('div',{class:'branch'},h('span',{text:S.branch+': '}),h('code',{class:'tag',dir:'ltr',text:m.branch}),h('span',{class:'arr',text:R?'←':'→'}),h('code',{class:'tag',dir:'ltr',text:m.base})),h('div',{class:'meta-line'},h('span',null,f(m.stats.files)+' '+u+' · ',h('bdi',{dir:'ltr',class:'add',text:'+'+m.stats.added}),' / ',h('bdi',{dir:'ltr',class:'del',text:'−'+m.stats.removed})),h('span',{text:'·'}),h('code',{dir:'ltr',title:S.shaHint,text:m.headSha}),mdB?h('span',{text:'·'}):null,mdB?h('code',{dir:'ltr',title:m.markdownPath,text:mdB}):null));
+ const top=h('header',{class:'hdr'},h('div',{class:'row'},h('h1',null,rich(m.title)),h('div',{class:'actions'},browserCtl(),editorCtl(),themeCtl())),h('div',{class:'branch'},h('span',{text:S.branch+': '}),h('code',{class:'tag',dir:'ltr',text:m.branch}),h('span',{class:'arr',text:R?'←':'→'}),h('code',{class:'tag',dir:'ltr',text:m.base})),h('div',{class:'meta-line'},h('span',null,f(m.stats.files)+' '+u+' · ',h('bdi',{dir:'ltr',class:'add',text:'+'+m.stats.added}),' / ',h('bdi',{dir:'ltr',class:'del',text:'−'+m.stats.removed})),h('span',{text:'·'}),h('code',{dir:'ltr',title:S.shaHint,text:m.headSha}),mdB?h('span',{text:'·'}):null,mdB?h('code',{dir:'ltr',title:m.markdownPath,text:mdB}):null));
  const mainEl=h('main',null,ovBlk(D.overview),D.slices.map((sl,i)=>slBlk(sl,i)),ccBlk(D.crossCutting));
  mount(app,top,mainEl)}
 let _sk=false;

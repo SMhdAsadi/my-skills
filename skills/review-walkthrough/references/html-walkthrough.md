@@ -228,6 +228,7 @@ The selected editor is saved across sessions in `localStorage["rw-editor"]`. Ini
 | Cross-cutting | نکات مشترک بین بخش‌ها |
 | Theme: System / Light / Dark | پوسته: خودکار / روشن / تیره |
 | Editor | ویرایشگر |
+| Open in browser | باز کردن در مرورگر |
 | Open in editor | باز کردن در ویرایشگر |
 | Copy path / Copied! | کپی مسیر / کپی شد! |
 | Added / Deleted | اضافه‌شده / حذف‌شده |
@@ -291,7 +292,7 @@ The template delivers an ultra-lean footprint (~25 KB total file size) with zero
 ## 8. Layout & Components
 
 - **Single-Column Scrollable Layout:** Centered container (`.wrap`, `max-width: 780px`), **non-sticky global `<header class="hdr">`**, **zero `position: fixed` elements anywhere**, and **no bottom `<footer>`**. Cards use `padding: 0` and `overflow-x: clip` (never `overflow: hidden`) so sticky section headers work cleanly.
-- **Consolidated Top Header (`.hdr`):** Contains `meta.title`, IDE selector (`.ed-sel`), theme toggle (`.seg`), branch tags (`branch ←/→ base`), diff stats, pinned `headSha` (with staleness tooltip), and `markdownPath` basename. Scrolls off-screen naturally as the reviewer reads.
+- **Consolidated Top Header (`.hdr`):** Contains `meta.title`, open-in-browser icon button (`.icon-btn`, opening the walkthrough in the default browser with `target="_blank"` / `rel="noopener noreferrer"` using `location.href` or `file://` fallback from `meta.markdownPath`, plus `googlechrome:` fallback for `http:`/`https:` if `window.open` fails), IDE selector (`.ed-sel`), theme toggle (`.seg`), branch tags (`branch ←/→ base`), diff stats, pinned `headSha` (with staleness tooltip), and `markdownPath` basename. Scrolls off-screen naturally as the reviewer reads.
 - **Collapsible Sticky Section Headers (`.sl-h` + `.sl-tog`):** `Overview`, every `Vertical Slice`, and `Cross-Cutting` share the same collapsible header pattern: `<h2 class="sl-h"><button type="button" class="sl-tog" aria-expanded="..." aria-controls="...">`. The entire header row (title, optional `.sl-prog`, and direction-aware chevron) is a single keyboard-accessible tap target, sticks cleanly at the top of the viewport (`position: sticky; top: 0; z-index: 2; background: var(--surface)`) while scrolling through an open card, and renders a bottom divider (`border-bottom: 1px solid var(--border)`) when expanded.
 - **Progress Pill (`.sl-prog`):** Uses `var(--font)` with `font-variant-numeric: tabular-nums` (not `var(--mono)`) so Persian digits (`۰/۳`) render in `Vazirmatn`.
 - **Overview Card (`.card.ov`):** Starts **expanded** on initial load (`body.hidden === false`, `aria-expanded="true"`), with manual collapse persisted in `localStorage["rw-collapsed:" + headSha]` under `'overview'`. Renders `overview.title`, optional `overview.summary` paragraphs, `affects`, optional `--warn`-bordered `split` callout (plus optional `boundaries` list), and a collapsed-by-default `<details class="skim">` for `overview.skim`.
@@ -299,7 +300,7 @@ The template delivers an ultra-lean footprint (~25 KB total file size) with zero
   - Manual expansion state persists in `localStorage["rw-expanded:" + headSha]` as an array of expanded slice IDs. Checking off files or QA items **never** auto-expands or auto-collapses a slice.
   - Inside each slice (`.sl-body`): prose `summary` → `Files` checklist (`localStorage["rw-files:" + headSha]` keyed by `"<sliceId>:<idx>"`) → optional `Heads Up` list (`.hu-item` with `--warn` inline-start border, dot, title, `.ref-row` pills, prose `body`, optional `extra`, optional `lookFor` callout — no `category` label) → optional `QA Check` checklist (`localStorage["rw-qa:" + headSha]` keyed by `"<sliceId>:<idx>"`).
 - **Cross-Cutting Card (`.card.cc`):** Rendered at the bottom only when `crossCutting` is present, starting **expanded** by default with manual collapse persisted in `localStorage["rw-collapsed:" + headSha]` under `'cross-cutting'`. Contains its `Heads Up` items and/or `QA Check` checklist (persisted in `localStorage["rw-qa:" + headSha]` keyed by `"cross-cutting:<idx>"`), and renders a live `.sl-prog` badge in its header whenever `qa` is non-empty.
-- **Print Stylesheet (`@media print`):** Forces light tokens, resets `.sl-h` to `position: static`, hides interactive chrome (`.seg`, `.ed-sel`, `.cp-btn`, `.sl-tog svg`) while keeping section headings and `.sl-prog` visible, forces all collapsed section bodies (`.sl-body[hidden]`) and `<details class="skim">` open, lets `.card` sections flow naturally across pages, keeps small atomic items (`.hu-item`, `.co`, `ul.chk li`) unbroken, and avoids orphaned headings (`break-after: avoid`).
+- **Print Stylesheet (`@media print`):** Forces light tokens, resets `.sl-h` to `position: static`, hides interactive chrome (`.seg`, `.ed-sel`, `.icon-btn`, `.cp-btn`, `.sl-tog svg`) while keeping section headings and `.sl-prog` visible, forces all collapsed section bodies (`.sl-body[hidden]`) and `<details class="skim">` open, lets `.card` sections flow naturally across pages, keeps small atomic items (`.hu-item`, `.co`, `ul.chk li`) unbroken, and avoids orphaned headings (`break-after: avoid`).
 
 ---
 
@@ -323,4 +324,4 @@ No `position: fixed`, no sticky global `<header class="hdr">` or bottom `<footer
 
 ## 12. Other Languages
 
-The template has built-in UI strings for English (`en`) and Persian (`fa`). Direction, Persian digits (`fa`), and the Vazirmatn font follow `lang`. Other languages fall back to `en` UI labels unless extended in the template (`I` object in `walkthrough-template.html`); built-in keys are `branch`, `split`, `overview`, `affects`, `headsUp`, `check`, `filesSec`, `skim`, `test`, `crossCutting`, `theme`, `sys`, `light`, `dark`, `editor`, `open`, `copy`, `copied`, `added`, `deleted`, `invalid`, `files`, `file`, and `shaHint`.
+The template has built-in UI strings for English (`en`) and Persian (`fa`). Direction, Persian digits (`fa`), and the Vazirmatn font follow `lang`. Other languages fall back to `en` UI labels unless extended in the template (`I` object in `walkthrough-template.html`); built-in keys are `branch`, `split`, `overview`, `affects`, `headsUp`, `check`, `filesSec`, `skim`, `test`, `crossCutting`, `theme`, `sys`, `light`, `dark`, `editor`, `browser`, `open`, `copy`, `copied`, `added`, `deleted`, `invalid`, `files`, `file`, and `shaHint`.
